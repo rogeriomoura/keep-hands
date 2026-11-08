@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "keep-hands-leaderboard",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "observability": { "enabled": true },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "keep-hands",
+      "database_id": "8c845daf-eb49-4de9-9bdd-fcc1ab50791d",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    // exact origins allowed to call the API (no paths)
+    "ALLOWED_ORIGINS": "https://rogeriomoura.github.io,http://localhost:5173,http://127.0.0.1:5173,http://192.168.4.52:5173"
+  }
+  // secret (not in this file): RUN_SECRET — `wrangler secret put RUN_SECRET`; locally in .dev.vars
+}

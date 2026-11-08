@@ -1,6 +1,14 @@
 import "./style.css";
 import { createGame, formatRunTime } from "./game";
 import {
+  describeSubmitError,
+  fetchTop,
+  leaderboardEnabled,
+  startRun,
+  submitScore,
+  type ScoreEntry,
+} from "./leaderboard";
+import {
   bindTouchControls,
   canFullscreen,
   enterImmersive,
@@ -83,6 +91,11 @@ app.innerHTML = `
           <p class="landscape-note">Phones: play in landscape with the on-screen controls. On iPhone, use Share → Add to Home Screen for fullscreen.</p>
         </div>
 
+        <div class="board title-board" id="title-board" hidden>
+          <h2>Fastest keepers</h2>
+          <ol class="board-list" id="title-board-list"></ol>
+        </div>
+
         <button type="button" id="start" class="start-btn">Start game</button>
       </div>
     </div>
@@ -92,6 +105,20 @@ app.innerHTML = `
         <h2 id="end-title">Keep fallen</h2>
         <p id="end-body">The raiders broke through.</p>
         <p class="end-time" id="end-time"></p>
+        <form class="submit-form" id="submit-form" hidden>
+          <label for="initials">Your initials</label>
+          <div class="submit-row">
+            <input id="initials" name="initials" maxlength="3" autocomplete="off"
+              autocapitalize="characters" spellcheck="false" enterkeyhint="send"
+              placeholder="AAA" aria-describedby="submit-status" />
+            <button type="submit" id="submit-btn">Post time</button>
+          </div>
+        </form>
+        <p class="submit-status" id="submit-status" role="status"></p>
+        <div class="board" id="end-board" hidden>
+          <h3>Fastest keepers</h3>
+          <ol class="board-list" id="end-board-list"></ol>
+        </div>
         <button type="button" id="restart">Try again</button>
       </div>
     </div>
@@ -122,6 +149,8 @@ const canvas = document.querySelector<HTMLCanvasElement>("#game");
 if (!canvas) throw new Error("canvas missing");
 
 const game = createGame(canvas);
+// dev-only console handle for testing (stripped from production builds)
+if (import.meta.env.DEV) (window as unknown as { __game: typeof game }).__game = game;
 
 const hud = document.querySelector<HTMLDivElement>("#hud")!;
 const phaseEl = document.querySelector("#phase")!;
@@ -132,6 +161,119 @@ const carryEl = document.querySelector("#carry")!;
 const crewEl = document.querySelector("#crew")!;
 const runTimeEl = document.querySelector<HTMLElement>("#run-time")!;
 const endTimeEl = document.querySelector<HTMLElement>("#end-time")!;
+const titleBoard = document.querySelector<HTMLDivElement>("#title-board")!;
+const titleBoardList = document.querySelector<HTMLOListElement>("#title-board-list")!;
+const submitForm = document.querySelector<HTMLFormElement>("#submit-form")!;
+const initialsInput = document.querySelector<HTMLInputElement>("#initials")!;
+const submitBtn = document.querySelector<HTMLButtonElement>("#submit-btn")!;
+const submitStatus = document.querySelector<HTMLParagraphElement>("#submit-status")!;
+const endBoard = document.querySelector<HTMLDivElement>("#end-board")!;
+const endBoardList = document.querySelector<HTMLOListElement>("#end-board-list")!;
+
+// —— Leaderboard ——
+const INITIALS_KEY = "keep-hands:initials";
+/** Server-stamped start of the current run; resolves to null if the API is unreachable */
+let runToken: Promise<string | null> = Promise.resolve(null);
+
+function renderBoard(list: HTMLOListElement, top: ScoreEntry[], mine?: { initials: string; timeMs: number }) {
+  list.replaceChildren();
+  if (top.length === 0) {
+    const li = document.createElement("li");
+    li.className = "board-empty";
+    li.textContent = "No times yet. Be the first.";
+    list.append(li);
+    return;
+  }
+  let marked = false;
+  for (const entry of top) {
+    const li = document.createElement("li");
+    const name = document.createElement("span");
+    name.className = "board-name";
+    name.textContent = entry.initials;
+    const time = document.createElement("span");
+    time.className = "board-time";
+    time.textContent = formatRunTime(entry.timeMs / 1000);
+    li.append(name, time);
+    if (!marked && mine && entry.initials === mine.initials && entry.timeMs === mine.timeMs) {
+      li.classList.add("is-mine");
+      marked = true;
+    }
+    list.append(li);
+  }
+}
+
+async function loadTitleBoard() {
+  if (!leaderboardEnabled) return;
+  const top = await fetchTop(5);
+  if (!top) return;
+  renderBoard(titleBoardList, top);
+  titleBoard.hidden = false;
+}
+
+async function showEndBoard() {
+  endBoard.hidden = true;
+  if (!leaderboardEnabled) return;
+  const top = await fetchTop(10);
+  if (!top) return;
+  renderBoard(endBoardList, top);
+  endBoard.hidden = false;
+}
+
+function resetEndScreen() {
+  submitForm.hidden = true;
+  submitStatus.textContent = "";
+  endBoard.hidden = true;
+  submitBtn.disabled = false;
+  initialsInput.disabled = false;
+}
+
+function savedInitials(): string {
+  try {
+    return localStorage.getItem(INITIALS_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+initialsInput.addEventListener("input", () => {
+  // letters only, uppercase, max 3
+  initialsInput.value = initialsInput.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3);
+});
+
+submitForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const initials = initialsInput.value.toUpperCase();
+  if (!/^[A-Z]{3}$/.test(initials)) {
+    submitStatus.textContent = "Use exactly 3 letters.";
+    initialsInput.focus();
+    return;
+  }
+  try {
+    localStorage.setItem(INITIALS_KEY, initials);
+  } catch {
+    /* private mode */
+  }
+  const timeMs = Math.round(game.getState().runTime * 1000);
+  submitBtn.disabled = true;
+  initialsInput.disabled = true;
+  submitStatus.textContent = "Posting…";
+  const result = await submitScore(await runToken, initials, timeMs);
+  if (result.ok) {
+    submitForm.hidden = true;
+    submitStatus.textContent = `You placed #${result.rank}.`;
+    renderBoard(endBoardList, result.top, { initials, timeMs });
+    endBoard.hidden = false;
+  } else {
+    submitStatus.textContent = describeSubmitError(result.error);
+    // a retry can help only for connection problems
+    const retryable = result.error === "offline" || result.error === "server_error";
+    submitBtn.disabled = !retryable;
+    initialsInput.disabled = !retryable;
+    if (!retryable) submitForm.hidden = true;
+  }
+});
+
+loadTitleBoard();
 const title = document.querySelector<HTMLDivElement>("#title")!;
 const overlay = document.querySelector<HTMLDivElement>("#overlay")!;
 const endTitle = document.querySelector("#end-title")!;
@@ -232,6 +374,8 @@ function syncTouchUi() {
 
 function launchRun() {
   game.start();
+  runToken = startRun();
+  resetEndScreen();
   title.hidden = true;
   overlay.hidden = true;
   hud.hidden = false;
@@ -241,6 +385,8 @@ function launchRun() {
 
 function launchRestart() {
   game.restart();
+  runToken = startRun();
+  resetEndScreen();
   overlay.hidden = true;
   title.hidden = true;
   hud.hidden = false;
@@ -333,11 +479,17 @@ function syncHud() {
       endBody.textContent =
         "The keep still stands. Towers fed, walls patched — good work.";
       endTimeEl.textContent = `All 5 nights in ${formatRunTime(s.runTime)}`;
+      if (leaderboardEnabled) {
+        submitForm.hidden = false;
+        initialsInput.value = savedInitials();
+      }
+      showEndBoard();
     } else {
       endTitle.textContent = "Keep fallen";
       endBody.textContent =
         "Something went unrepaired. The next shift will remember.";
       endTimeEl.textContent = `Fell on night ${Math.min(s.wave, 5)} after ${formatRunTime(s.runTime)}`;
+      showEndBoard();
     }
   }
 

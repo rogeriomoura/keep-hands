@@ -29,10 +29,21 @@ function codeOf(e: KeyboardEvent): string {
   return k;
 }
 
+/** Typing in a form field (e.g. leaderboard initials) must not drive the game. */
+function isEditable(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target.isContentEditable
+  );
+}
+
 export function createInput() {
   const keys: KeyState = {};
 
   const onDown = (e: KeyboardEvent) => {
+    if (isEditable(e.target)) return;
     const code = codeOf(e);
     keys[code] = true;
     if (GAME_KEYS.has(code) || code.startsWith("Arrow")) {
@@ -41,6 +52,7 @@ export function createInput() {
   };
 
   const onUp = (e: KeyboardEvent) => {
+    if (isEditable(e.target)) return;
     keys[codeOf(e)] = false;
   };
 

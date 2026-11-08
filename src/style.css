@@ -646,3 +646,131 @@ body.immersive:not(.is-fullscreen) #app {
   font-weight: 700;
   color: #e8c88c;
 }
+
+/* —— Leaderboard —— */
+#overlay .panel {
+  max-height: calc(100% - 1.5rem);
+  overflow: auto;
+}
+
+.submit-form {
+  margin: 0.25rem 0 0.75rem;
+}
+
+.submit-form label {
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #a89880;
+}
+
+.submit-row {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.submit-form input {
+  width: 5.5rem;
+  padding: 0.45rem 0.5rem;
+  /* ≥16px so iOS Safari doesn't zoom the page on focus */
+  font: 700 1.25rem "IBM Plex Sans", sans-serif;
+  letter-spacing: 0.3em;
+  text-align: center;
+  text-transform: uppercase;
+  color: #f0e6d4;
+  background: rgba(12, 10, 8, 0.6);
+  border: 1px solid #8a6a40;
+  border-radius: 0.4rem;
+}
+
+.submit-form input:focus {
+  outline: 2px solid #d8b45a;
+  outline-offset: 1px;
+}
+
+.submit-status {
+  min-height: 1.2em;
+  margin-bottom: 0.5rem !important;
+  font-size: 0.9rem;
+}
+
+.board {
+  margin: 0.5rem auto 1rem;
+  max-width: 16rem;
+  text-align: left;
+}
+
+.board h2,
+.board h3 {
+  margin-bottom: 0.4rem;
+  font-family: "Cormorant Garamond", serif;
+  font-size: 1.2rem;
+  text-align: center;
+  color: #e8c88c;
+}
+
+.board-list {
+  list-style: none;
+  counter-reset: rank;
+  margin: 0;
+  padding: 0;
+}
+
+.board-list li {
+  counter-increment: rank;
+  display: flex;
+  gap: 0.6rem;
+  padding: 0.18rem 0.5rem;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+  color: #cbb89a;
+  border-radius: 0.3rem;
+}
+
+.board-list li::before {
+  content: counter(rank) ".";
+  width: 1.6rem;
+  color: #7a6e60;
+}
+
+.board-list .board-name {
+  flex: 1;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: #f0e6d4;
+}
+
+.board-list li.is-mine {
+  background: rgba(216, 180, 90, 0.18);
+  outline: 1px solid rgba(216, 180, 90, 0.5);
+}
+
+.board-list li.board-empty {
+  justify-content: center;
+  color: #7a6e60;
+}
+
+.board-list li.board-empty::before {
+  content: none;
+}
+
+/* —— Title panel fits any window: scrolls inside, Start stays pinned at the bottom —— */
+.title-overlay .title-panel {
+  max-height: calc(100% - 1.5rem);
+  overflow: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+
+.title-panel .start-btn {
+  position: sticky;
+  bottom: 0;
+  /* fade content above the button; a panel-coloured band hides what scrolls under the bottom padding */
+  box-shadow:
+    0 -14px 18px 4px #17130f,
+    0 26px 0 26px #16120e;
+}

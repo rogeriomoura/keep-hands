@@ -49,6 +49,7 @@ app.innerHTML = `
             First night is a clean shift: prep timer, then siege — no shop yet.
             After that: day shop → prep → night. Spend gold on upgrades and hired help between waves.
           </p>
+          <p class="landscape-note">Phones: play in landscape (sideways).</p>
         </div>
 
         <button type="button" id="start" class="start-btn">Start game</button>
@@ -60,6 +61,17 @@ app.innerHTML = `
         <h2 id="end-title">Keep fallen</h2>
         <p id="end-body">The raiders broke through.</p>
         <button type="button" id="restart">Try again</button>
+      </div>
+    </div>
+
+    <div class="rotate-gate" id="rotate-gate" hidden>
+      <div class="rotate-card">
+        <div class="rotate-icon" aria-hidden="true">
+          <span class="phone"></span>
+          <span class="rotate-arrow">↺</span>
+        </div>
+        <h2>Turn your phone</h2>
+        <p>Keep Hands plays in landscape. Rotate your device sideways to continue.</p>
       </div>
     </div>
   </div>
@@ -83,24 +95,106 @@ const endTitle = document.querySelector("#end-title")!;
 const endBody = document.querySelector("#end-body")!;
 const startBtn = document.querySelector<HTMLButtonElement>("#start")!;
 const restartBtn = document.querySelector<HTMLButtonElement>("#restart")!;
+const rotateGate = document.querySelector<HTMLDivElement>("#rotate-gate")!;
 
-function beginRun() {
+let pendingStart = false;
+let pendingRestart = false;
+
+function needsLandscape(): boolean {
+  const portrait = window.matchMedia("(orientation: portrait)").matches;
+  if (!portrait) return false;
+  const touch =
+    "ontouchstart" in window ||
+    navigator.maxTouchPoints > 0 ||
+    window.matchMedia("(pointer: coarse)").matches;
+  return touch || window.innerWidth <= 920;
+}
+
+async function requestLandscape() {
+  try {
+    const root = document.documentElement;
+    if (!document.fullscreenElement && root.requestFullscreen) {
+      await root.requestFullscreen();
+    }
+  } catch {
+    /* optional */
+  }
+
+  try {
+    const orientation = screen.orientation as ScreenOrientation & {
+      lock?: (orientation: OrientationLockType) => Promise<void>;
+    };
+    if (typeof orientation?.lock === "function") {
+      await orientation.lock("landscape");
+    }
+  } catch {
+    /* many mobile browsers require PWA / fullscreen */
+  }
+}
+
+function syncRotateGate() {
+  const block = needsLandscape();
+  rotateGate.hidden = !block;
+  document.body.classList.toggle("must-rotate", block);
+  game.setOrientationPaused(block);
+  return block;
+}
+
+function launchRun() {
   game.start();
   title.hidden = true;
   overlay.hidden = true;
   hud.hidden = false;
+  pendingStart = false;
 }
 
-startBtn.addEventListener("click", beginRun);
-
-restartBtn.addEventListener("click", () => {
+function launchRestart() {
   game.restart();
   overlay.hidden = true;
   title.hidden = true;
   hud.hidden = false;
+  pendingRestart = false;
+}
+
+startBtn.addEventListener("click", () => {
+  void requestLandscape();
+  if (syncRotateGate()) {
+    pendingStart = true;
+    return;
+  }
+  launchRun();
 });
 
+restartBtn.addEventListener("click", () => {
+  void requestLandscape();
+  if (syncRotateGate()) {
+    pendingRestart = true;
+    return;
+  }
+  launchRestart();
+});
+
+window.addEventListener("orientationchange", () => {
+  syncRotateGate();
+});
+window.addEventListener("resize", () => {
+  syncRotateGate();
+});
+syncRotateGate();
+
 function syncHud() {
+  const blocked = syncRotateGate();
+
+  if (!blocked) {
+    if (pendingStart && game.getState().status === "menu") launchRun();
+    if (pendingRestart) launchRestart();
+  }
+
+  if (blocked) {
+    requestAnimationFrame(syncHud);
+    return;
+  }
+
   const s = game.getState();
 
   if (s.status === "menu") {

@@ -128,6 +128,7 @@ export function createGame(canvas: HTMLCanvasElement) {
   let state = freshState();
   let last = performance.now();
   let raf = 0;
+  let pausedForOrientation = false;
 
   const resize = () => {
     const rect = canvas.parentElement?.getBoundingClientRect();
@@ -145,7 +146,7 @@ export function createGame(canvas: HTMLCanvasElement) {
   const frame = (now: number) => {
     const dt = Math.min(0.033, (now - last) / 1000);
     last = now;
-    if (state.status === "playing") {
+    if (state.status === "playing" && !pausedForOrientation) {
       update(state, input.keys, dt, canvas);
     } else {
       state.bannerLife = Math.max(0, state.bannerLife - dt);
@@ -162,9 +163,14 @@ export function createGame(canvas: HTMLCanvasElement) {
     getState: () => state,
     start() {
       state = freshState("playing");
+      pausedForOrientation = false;
     },
     restart() {
       state = freshState("playing");
+      pausedForOrientation = false;
+    },
+    setOrientationPaused(paused: boolean) {
+      pausedForOrientation = paused;
     },
     dispose() {
       cancelAnimationFrame(raf);

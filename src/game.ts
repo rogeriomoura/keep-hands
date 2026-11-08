@@ -147,6 +147,8 @@ export type GameState = {
   lives: number;
   status: "menu" | "playing" | "won" | "lost";
   elapsed: number;
+  /** Seconds of actual play (prep + nights); frozen while the shop is open or the run is over */
+  runTime: number;
 };
 
 const MAX_WAVES = 5;
@@ -325,6 +327,7 @@ function freshState(status: GameState["status"] = "menu"): GameState {
     lives: 3,
     status,
     elapsed: 0,
+    runTime: 0,
   };
 }
 
@@ -346,6 +349,8 @@ function update(
 
   // Shop phase: world paused so you can read/buy; prep/night run normally
   if (state.dayPhase !== "shop") {
+    // run clock only advances while the world does (never during the shop)
+    state.runTime += dt;
     updatePlayer(state, keys, dt);
     updateHelpers(state, dt);
     updateTowers(state, dt);
@@ -1228,6 +1233,20 @@ function addFloater(
 }
 
 type ViewInsets = { left: number; right: number };
+
+/** 83.4 → "1:23.4", 3723.4 → "1:02:03.4" */
+export function formatRunTime(seconds: number): string {
+  const tenths = Math.floor(Math.max(0, seconds) * 10);
+  const t = tenths % 10;
+  const total = Math.floor(tenths / 10);
+  const s = total % 60;
+  const m = Math.floor(total / 60) % 60;
+  const h = Math.floor(total / 3600);
+  const ss = String(s).padStart(2, "0");
+  return h > 0
+    ? `${h}:${String(m).padStart(2, "0")}:${ss}.${t}`
+    : `${m}:${ss}.${t}`;
+}
 
 function updateCamera(state: GameState, canvas: HTMLCanvasElement, insets: ViewInsets) {
   const zoom = worldZoom(

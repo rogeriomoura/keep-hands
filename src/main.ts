@@ -1,5 +1,5 @@
 import "./style.css";
-import { createGame } from "./game";
+import { createGame, formatRunTime } from "./game";
 import {
   bindTouchControls,
   canFullscreen,
@@ -28,6 +28,7 @@ app.innerHTML = `
     <div class="hud" id="hud" hidden>
       <div>Phase <strong id="phase">Shop</strong></div>
       <div>Night <strong id="wave">1</strong>/5</div>
+      <div>Time <strong id="run-time" class="run-time">0:00.0</strong></div>
       <div>Lives <strong id="lives">3</strong></div>
       <div>Gold <strong id="gold">0</strong></div>
       <div>Carry <strong id="carry">—</strong></div>
@@ -90,6 +91,7 @@ app.innerHTML = `
       <div class="panel">
         <h2 id="end-title">Keep fallen</h2>
         <p id="end-body">The raiders broke through.</p>
+        <p class="end-time" id="end-time"></p>
         <button type="button" id="restart">Try again</button>
       </div>
     </div>
@@ -128,6 +130,8 @@ const livesEl = document.querySelector("#lives")!;
 const goldEl = document.querySelector("#gold")!;
 const carryEl = document.querySelector("#carry")!;
 const crewEl = document.querySelector("#crew")!;
+const runTimeEl = document.querySelector<HTMLElement>("#run-time")!;
+const endTimeEl = document.querySelector<HTMLElement>("#end-time")!;
 const title = document.querySelector<HTMLDivElement>("#title")!;
 const overlay = document.querySelector<HTMLDivElement>("#overlay")!;
 const endTitle = document.querySelector("#end-title")!;
@@ -305,6 +309,9 @@ function syncHud() {
     phaseEl.textContent =
       s.dayPhase === "shop" ? "Shop" : s.dayPhase === "prep" ? "Prep" : "Night";
     waveEl.textContent = String(Math.min(s.wave, 5));
+    runTimeEl.textContent = formatRunTime(s.runTime);
+    // dim the clock while it's stopped (shop open)
+    runTimeEl.classList.toggle("is-paused", s.status === "playing" && s.dayPhase === "shop");
     livesEl.textContent = String(Math.max(0, s.lives));
     goldEl.textContent = String(s.gold);
     carryEl.textContent = s.player.carrying ?? "—";
@@ -325,10 +332,12 @@ function syncHud() {
       endTitle.textContent = "Night held";
       endBody.textContent =
         "The keep still stands. Towers fed, walls patched — good work.";
+      endTimeEl.textContent = `All 5 nights in ${formatRunTime(s.runTime)}`;
     } else {
       endTitle.textContent = "Keep fallen";
       endBody.textContent =
         "Something went unrepaired. The next shift will remember.";
+      endTimeEl.textContent = `Fell on night ${Math.min(s.wave, 5)} after ${formatRunTime(s.runTime)}`;
     }
   }
 

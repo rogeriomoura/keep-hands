@@ -97,13 +97,8 @@ export function createWorld(): World {
     {
       id: "stone-pile",
       kind: "stone",
-      body: { x: 390, y: groundY - 28, w: 52, h: 28 },
-      amount: 99,
-    },
-    {
-      id: "stone-pile-east",
-      kind: "stone",
-      body: { x: 680, y: groundY - 28, w: 52, h: 28 },
+      // Next to powder so the mason has a real haul to the walls
+      body: { x: 150, y: groundY - 28, w: 52, h: 28 },
       amount: 99,
     },
   ];

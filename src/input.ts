@@ -14,6 +14,8 @@ export function createInput() {
       e.code === "Digit2" ||
       e.code === "Digit3" ||
       e.code === "Digit4" ||
+      e.code === "Digit5" ||
+      e.code === "Digit6" ||
       e.code === "Enter"
     ) {
       e.preventDefault();

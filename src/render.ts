@@ -1,4 +1,5 @@
 import type { GameState } from "./game";
+import { HIRE_DEFS, canHire, hireCost } from "./hires";
 import { UPGRADE_DEFS, canBuy, upgradeCost } from "./upgrades";
 
 export function render(ctx: CanvasRenderingContext2D, state: GameState) {
@@ -21,6 +22,7 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState) {
   drawSupplies(ctx, state);
   drawEnemies(ctx, state);
   drawProjectiles(ctx, state);
+  drawHelpers(ctx, state);
   drawPlayer(ctx, state);
   drawFloaters(ctx, state);
   drawPrompt(ctx, state);
@@ -289,89 +291,176 @@ function drawShopPhase(
   viewH: number,
 ) {
   const cx = viewW / 2;
-  const cy = viewH * 0.42;
+  const panelW = 680;
+  const panelH = 460;
+  const top = Math.max(24, (viewH - panelH) / 2);
 
   ctx.save();
-  // Dim the keep while paused
   ctx.fillStyle = "rgba(12, 10, 8, 0.45)";
   ctx.fillRect(0, 0, viewW, viewH);
 
-  ctx.fillStyle = "rgba(18, 14, 10, 0.88)";
-  roundRect(ctx, cx - 320, cy - 160, 640, 320, 12);
+  ctx.fillStyle = "rgba(18, 14, 10, 0.9)";
+  roundRect(ctx, cx - panelW / 2, top, panelW, panelH, 12);
   ctx.fill();
   ctx.strokeStyle = "rgba(232, 220, 200, 0.4)";
   ctx.lineWidth = 2;
-  roundRect(ctx, cx - 320, cy - 160, 640, 320, 12);
+  roundRect(ctx, cx - panelW / 2, top, panelW, panelH, 12);
   ctx.stroke();
 
   ctx.textAlign = "center";
   ctx.fillStyle = "#f0e6d4";
   ctx.font = "700 28px Cormorant Garamond, serif";
-  ctx.fillText("Quartermaster", cx, cy - 120);
+  ctx.fillText("Quartermaster", cx, top + 40);
 
   ctx.fillStyle = "#a89880";
   ctx.font = "500 13px IBM Plex Sans, sans-serif";
   ctx.fillText(
     `Paused · Night ${state.wave} waiting · Gold ${state.gold}`,
     cx,
-    cy - 94,
+    top + 64,
   );
-  ctx.fillText("Read the stock, spend what you need — no rush", cx, cy - 74);
+
+  // Upgrades row
+  const upgradeY = top + 98;
+  ctx.fillStyle = "#cbb89a";
+  ctx.font = "600 12px IBM Plex Sans, sans-serif";
+  ctx.fillText("UPGRADES", cx, upgradeY);
 
   const slotW = 140;
+  const cardH = 110;
   const startX = cx - (UPGRADE_DEFS.length * slotW) / 2;
   UPGRADE_DEFS.forEach((def, i) => {
     const level = state.upgrades[def.id];
     const maxed = level >= def.maxLevel;
     const cost = maxed ? 0 : upgradeCost(def.id, level);
     const affordable = canBuy(def.id, state.upgrades, state.gold);
-    const x = startX + i * slotW + 8;
-    const y = cy - 48;
-
-    ctx.fillStyle = affordable
-      ? "rgba(60, 48, 32, 0.9)"
-      : "rgba(36, 30, 24, 0.9)";
-    roundRect(ctx, x, y, slotW - 16, 130, 8);
-    ctx.fill();
-    ctx.strokeStyle = maxed
-      ? "rgba(106, 143, 106, 0.7)"
-      : affordable
-        ? "rgba(216, 180, 90, 0.55)"
-        : "rgba(90, 78, 64, 0.5)";
-    ctx.stroke();
-
-    ctx.fillStyle = "#d8b45a";
-    ctx.font = "700 18px Cormorant Garamond, serif";
-    ctx.fillText(def.key, x + (slotW - 16) / 2, y + 28);
-
-    ctx.fillStyle = "#f0e6d4";
-    ctx.font = "700 14px IBM Plex Sans, sans-serif";
-    ctx.fillText(def.name, x + (slotW - 16) / 2, y + 52);
-
-    ctx.fillStyle = "#a89880";
-    ctx.font = "500 12px IBM Plex Sans, sans-serif";
-    ctx.fillText(def.blurb, x + (slotW - 16) / 2, y + 74);
-    ctx.fillText(
+    drawShopCard(
+      ctx,
+      startX + i * slotW + 8,
+      upgradeY + 12,
+      slotW - 16,
+      cardH,
+      def.key,
+      def.name,
+      def.blurb,
       maxed ? `MAX · Lv ${level}` : `Lv ${level} → ${level + 1}`,
-      x + (slotW - 16) / 2,
-      y + 96,
-    );
-
-    ctx.fillStyle = maxed ? "#6a8f6a" : affordable ? "#e8dcc8" : "#7a6e60";
-    ctx.font = "700 13px IBM Plex Sans, sans-serif";
-    ctx.fillText(
       maxed ? "Owned" : `${cost} gold`,
-      x + (slotW - 16) / 2,
-      y + 118,
+      maxed,
+      affordable,
     );
   });
 
+  // Hire row — clear gap under upgrades
+  const hireY = upgradeY + 12 + cardH + 36;
+  ctx.fillStyle = "#cbb89a";
+  ctx.font = "600 12px IBM Plex Sans, sans-serif";
+  ctx.fillText("HIRE HELP", cx, hireY);
+
+  const hireW = 200;
+  const hireStart = cx - (HIRE_DEFS.length * hireW) / 2;
+  HIRE_DEFS.forEach((def, i) => {
+    const owned = state.crew[def.id];
+    const affordable = canHire(def.id, state.crew, state.gold);
+    drawShopCard(
+      ctx,
+      hireStart + i * hireW + 8,
+      hireY + 12,
+      hireW - 16,
+      cardH,
+      def.key,
+      def.name,
+      def.blurb,
+      def.detail,
+      owned ? "On payroll" : `${hireCost(def.id)} gold`,
+      owned,
+      affordable,
+    );
+  });
+
+  // Footer hint — below hire cards with breathing room
   ctx.fillStyle = "#e8dcc8";
   ctx.font = "600 14px IBM Plex Sans, sans-serif";
-  ctx.fillText("Press Enter when ready — then 15s to repair & reload", cx, cy + 130);
+  ctx.fillText(
+    "Press Enter when ready — then 15s to repair & reload",
+    cx,
+    hireY + 12 + cardH + 36,
+  );
 
   ctx.textAlign = "left";
   ctx.restore();
+}
+
+function drawShopCard(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  key: string,
+  name: string,
+  blurb: string,
+  line: string,
+  price: string,
+  owned: boolean,
+  affordable: boolean,
+) {
+  ctx.fillStyle = affordable
+    ? "rgba(60, 48, 32, 0.9)"
+    : "rgba(36, 30, 24, 0.9)";
+  roundRect(ctx, x, y, w, h, 8);
+  ctx.fill();
+  ctx.strokeStyle = owned
+    ? "rgba(106, 143, 106, 0.7)"
+    : affordable
+      ? "rgba(216, 180, 90, 0.55)"
+      : "rgba(90, 78, 64, 0.5)";
+  ctx.stroke();
+
+  const mid = x + w / 2;
+  ctx.fillStyle = "#d8b45a";
+  ctx.font = "700 17px Cormorant Garamond, serif";
+  ctx.fillText(key, mid, y + 22);
+
+  ctx.fillStyle = "#f0e6d4";
+  ctx.font = "700 13px IBM Plex Sans, sans-serif";
+  ctx.fillText(name, mid, y + 42);
+
+  ctx.fillStyle = "#a89880";
+  ctx.font = "500 11px IBM Plex Sans, sans-serif";
+  ctx.fillText(blurb, mid, y + 60);
+  ctx.fillText(line, mid, y + 78);
+
+  ctx.fillStyle = owned ? "#6a8f6a" : affordable ? "#e8dcc8" : "#7a6e60";
+  ctx.font = "700 12px IBM Plex Sans, sans-serif";
+  ctx.fillText(price, mid, y + 98);
+}
+
+function drawHelpers(ctx: CanvasRenderingContext2D, state: GameState) {
+  for (const h of state.helpers) {
+    const tunic = h.role === "runner" ? "#6a4a28" : "#4a5c68";
+    ctx.fillStyle = tunic;
+    ctx.fillRect(h.x + 2, h.y + 10, h.w - 4, 16);
+    ctx.fillStyle = "#c9b28a";
+    ctx.fillRect(h.x + 4, h.y + 2, 10, 10);
+    ctx.fillStyle = "#2a241c";
+    ctx.fillRect(h.x + 3, h.y + 26, 5, 10);
+    ctx.fillRect(h.x + 10, h.y + 26, 5, 10);
+
+    if (h.carrying) {
+      ctx.fillStyle = h.carrying === "ammo" ? "#d8b45a" : "#9a9488";
+      ctx.fillRect(h.x + (h.facing > 0 ? 14 : -8), h.y + 12, 12, 9);
+    }
+
+    ctx.fillStyle = "rgba(20, 16, 12, 0.75)";
+    const label = h.label;
+    ctx.font = "600 10px IBM Plex Sans, sans-serif";
+    const tw = ctx.measureText(label).width + 8;
+    ctx.fillRect(h.x + h.w / 2 - tw / 2, h.y - 16, tw, 14);
+    ctx.fillStyle = "#e8dcc8";
+    ctx.textAlign = "center";
+    ctx.fillText(label, h.x + h.w / 2, h.y - 5);
+    ctx.textAlign = "left";
+  }
 }
 
 function drawPrepPhase(

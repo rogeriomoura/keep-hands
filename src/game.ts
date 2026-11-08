@@ -1,5 +1,18 @@
 import { createInput, type KeyState } from "./input";
 import {
+  spawnHelper,
+  updateHelpers,
+  type Helper,
+} from "./helpers";
+import {
+  HIRE_DEFS,
+  canHire,
+  freshCrew,
+  hireCost,
+  type Crew,
+  type HireId,
+} from "./hires";
+import {
   UPGRADE_DEFS,
   canBuy,
   freshUpgrades,
@@ -72,6 +85,7 @@ export type GameState = {
   enemies: Enemy[];
   projectiles: Projectile[];
   floaters: Floater[];
+  helpers: Helper[];
   camera: { x: number; y: number };
   shake: number;
   prompt: string;
@@ -88,8 +102,9 @@ export type GameState = {
   spawnTimer: number;
   gold: number;
   upgrades: Upgrades;
+  crew: Crew;
   shopCooldown: number;
-  shopKeysHeld: Partial<Record<UpgradeId, boolean>>;
+  shopKeysHeld: Partial<Record<UpgradeId | HireId, boolean>>;
   confirmHeld: boolean;
   lives: number;
   status: "playing" | "won" | "lost";
@@ -172,6 +187,7 @@ function freshState(): GameState {
     enemies: [],
     projectiles: [],
     floaters: [],
+    helpers: [],
     camera: { x: 0, y: 0 },
     shake: 0,
     prompt: "",
@@ -185,8 +201,9 @@ function freshState(): GameState {
     spawnedThisWave: 0,
     toSpawn: 4,
     spawnTimer: 0,
-    gold: 25,
+    gold: 40,
     upgrades: freshUpgrades(),
+    crew: freshCrew(),
     shopCooldown: 0,
     shopKeysHeld: {},
     confirmHeld: false,
@@ -209,6 +226,7 @@ function update(state: GameState, keys: KeyState, dt: number, canvas: HTMLCanvas
   // Shop phase: world paused so you can read/buy; prep/night run normally
   if (state.dayPhase !== "shop") {
     updatePlayer(state, keys, dt);
+    updateHelpers(state, dt);
     updateTowers(state, dt);
     updateProjectiles(state, dt);
     updateEnemies(state, dt);
@@ -318,14 +336,18 @@ function spawnEnemy(state: GameState) {
 }
 
 function updateShop(state: GameState, keys: KeyState) {
-  const mapping: { code: string; id: UpgradeId }[] = [
+  const upgrades: { code: string; id: UpgradeId }[] = [
     { code: "Digit1", id: "power" },
     { code: "Digit2", id: "magazine" },
     { code: "Digit3", id: "braces" },
     { code: "Digit4", id: "boots" },
   ];
+  const hires: { code: string; id: HireId }[] = [
+    { code: "Digit5", id: "runner" },
+    { code: "Digit6", id: "mason" },
+  ];
 
-  for (const { code, id } of mapping) {
+  for (const { code, id } of upgrades) {
     const down = Boolean(keys[code]);
     const was = Boolean(state.shopKeysHeld[id]);
     state.shopKeysHeld[id] = down;
@@ -334,6 +356,39 @@ function updateShop(state: GameState, keys: KeyState) {
     if (state.shopCooldown > 0) continue;
     if (down && !was) tryBuyUpgrade(state, id);
   }
+
+  for (const { code, id } of hires) {
+    const down = Boolean(keys[code]);
+    const was = Boolean(state.shopKeysHeld[id]);
+    state.shopKeysHeld[id] = down;
+
+    if (state.dayPhase !== "shop" || state.status !== "playing") continue;
+    if (state.shopCooldown > 0) continue;
+    if (down && !was) tryHire(state, id);
+  }
+}
+
+function tryHire(state: GameState, id: HireId) {
+  if (!canHire(id, state.crew, state.gold)) {
+    state.shopCooldown = 0.2;
+    return;
+  }
+
+  state.gold -= hireCost(id);
+  state.crew[id] = true;
+  state.shopCooldown = 0.35;
+  state.helpers.push(spawnHelper(state, id));
+
+  const def = HIRE_DEFS.find((d) => d.id === id)!;
+  state.banner = `Hired ${def.name}`;
+  state.bannerLife = 1.6;
+  addFloater(
+    state,
+    state.player.x + state.player.w / 2,
+    state.player.y - 20,
+    def.name,
+    "#8fbc8f",
+  );
 }
 
 function tryBuyUpgrade(state: GameState, id: UpgradeId) {

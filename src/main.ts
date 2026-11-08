@@ -16,7 +16,8 @@ app.innerHTML = `
       <div>Lives <strong id="lives">3</strong></div>
       <div>Gold <strong id="gold">0</strong></div>
       <div>Carry <strong id="carry">—</strong></div>
-      <div class="hint">Shop: 1–4 buy · Enter prep · Then arrows · Space · Z · X</div>
+      <div>Crew <strong id="crew">—</strong></div>
+      <div class="hint">Shop: 1–4 upgrades · 5–6 hire · Enter prep</div>
     </div>
   </header>
   <div class="stage">
@@ -41,6 +42,7 @@ const waveEl = document.querySelector("#wave")!;
 const livesEl = document.querySelector("#lives")!;
 const goldEl = document.querySelector("#gold")!;
 const carryEl = document.querySelector("#carry")!;
+const crewEl = document.querySelector("#crew")!;
 const overlay = document.querySelector<HTMLDivElement>("#overlay")!;
 const endTitle = document.querySelector("#end-title")!;
 const endBody = document.querySelector("#end-body")!;
@@ -59,6 +61,11 @@ function syncHud() {
   livesEl.textContent = String(Math.max(0, s.lives));
   goldEl.textContent = String(s.gold);
   carryEl.textContent = s.player.carrying ?? "—";
+  const crewBits = [
+    s.crew.runner ? "Runner" : null,
+    s.crew.mason ? "Mason" : null,
+  ].filter(Boolean);
+  crewEl.textContent = crewBits.length ? crewBits.join(" · ") : "—";
 
   if (s.status !== "playing" && overlay.hidden) {
     overlay.hidden = false;

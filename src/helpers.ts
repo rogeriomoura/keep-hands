@@ -1,3 +1,4 @@
+import type { Debris } from "./game";
 import { expand, rectsOverlap, type Rect, type World } from "./world";
 
 export type CarryKind = "ammo" | "stone";
@@ -19,7 +20,22 @@ export type Helper = {
   label: string;
   /** Tower the runner is currently servicing */
   targetTowerId: string | null;
+  // Animation-only state (never read by the AI or physics)
+  walkPhase: number;
+  stride: number;
+  climbPhase: number;
+  /** What the current workTimer pause is for, so it can get its own pose */
+  task: HelperTask | null;
+  taskT: number;
+  taskDur: number;
 };
+
+export type HelperTask = "pickup" | "load" | "repair";
+
+/** Seconds per hammer blow while the mason repairs (cosmetic) */
+export const REPAIR_SWING = 0.36;
+/** Fraction of each swing where the hammer lands */
+export const REPAIR_HIT = 0.8;
 
 type HelperState = {
   world: World;
@@ -33,6 +49,7 @@ type HelperState = {
     color: string;
     vy: number;
   }[];
+  debris: Debris[];
 };
 
 export function spawnHelper(
@@ -57,14 +74,95 @@ export function spawnHelper(
     workTimer: 0,
     label: role === "runner" ? "Runner" : "Mason",
     targetTowerId: null,
+    walkPhase: 0,
+    stride: 0,
+    climbPhase: 0,
+    task: null,
+    taskT: 0,
+    taskDur: 0,
   };
 }
 
 export function updateHelpers(state: HelperState, dt: number) {
   for (const h of state.helpers) {
+    const px = h.x;
+    const py = h.y;
     h.workTimer = Math.max(0, h.workTimer - dt);
     if (h.role === "runner") updateRunner(state, h, dt);
     else updateMason(state, h, dt);
+    animateHelper(state, h, dt, px, py);
+  }
+}
+
+/** Same pause as before (`workTimer = dur`), tagged with what it's for. */
+function beginWork(h: Helper, task: HelperTask, dur: number) {
+  h.workTimer = dur;
+  h.task = task;
+  h.taskT = 0;
+  h.taskDur = dur;
+}
+
+/**
+ * Cosmetic only: drives walk/climb cycles from how far the helper actually
+ * moved this frame, and kicks up stone chips on each hammer blow.
+ */
+function animateHelper(
+  state: HelperState,
+  h: Helper,
+  dt: number,
+  px: number,
+  py: number,
+) {
+  if (dt <= 0) return;
+  const mx = (h.x - px) / dt;
+  const my = (h.y - py) / dt;
+  const walking = !h.onLadder && Math.abs(mx) > 5;
+  h.stride += ((walking ? 1 : 0) - h.stride) * Math.min(1, dt * 12);
+  if (walking) h.walkPhase += dt * Math.abs(mx) * 0.085;
+  if (h.onLadder && Math.abs(my) > 5) h.climbPhase += dt * Math.abs(my) * 0.08;
+
+  if (!h.task) return;
+  if (h.workTimer <= 0) {
+    h.task = null;
+    return;
+  }
+  const before = h.taskT;
+  h.taskT += dt;
+  if (h.task === "repair") {
+    const blows = (t: number) => Math.floor(t / REPAIR_SWING + (1 - REPAIR_HIT));
+    if (blows(h.taskT) > blows(before)) {
+      // where the hammer head lands (shoulder + arm + handle, angled down-forward)
+      const x = h.x + h.w / 2 + h.facing * 18;
+      const y = h.y + 18;
+      for (let i = 0; i < 4; i++) {
+        const ang = -Math.PI / 2 - h.facing * (0.4 + Math.random() * 0.9);
+        const spd = 60 + Math.random() * 70;
+        state.debris.push({
+          kind: "chip",
+          x,
+          y: y + (Math.random() - 0.5) * 4,
+          vx: Math.cos(ang) * spd,
+          vy: Math.sin(ang) * spd,
+          life: 0.35 + Math.random() * 0.25,
+          maxLife: 0.6,
+          size: 1.5 + Math.random() * 1.5,
+          spin: (Math.random() - 0.5) * 18,
+          color: Math.random() < 0.5 ? "#958675" : "#b4aea2",
+        });
+      }
+      state.debris.push({
+        kind: "dust",
+        x,
+        y,
+        vx: -h.facing * 10,
+        vy: -8,
+        life: 0.35,
+        maxLife: 0.35,
+        size: 4,
+        spin: 0,
+        color: "200, 186, 164",
+      });
+    }
   }
 }
 
@@ -100,7 +198,7 @@ function updateRunner(state: HelperState, h: Helper, dt: number) {
     if (near(h, ammo.body, 12)) {
       h.carrying = "ammo";
       addHelperFloater(state, h, "AMMO", "#d8b45a");
-      h.workTimer = 0.3;
+      beginWork(h, "pickup", 0.3);
       return;
     }
     walkOnGround(state, h, ammo.body.x + ammo.body.w / 2 - h.w / 2, dt);
@@ -141,7 +239,9 @@ function updateRunner(state: HelperState, h: Helper, dt: number) {
     tower.ammo += add;
     h.carrying = null;
     h.targetTowerId = null;
-    h.workTimer = 0.5;
+    beginWork(h, "load", 0.5);
+    // face the cannon while loading (facing is cosmetic for helpers)
+    h.facing = tower.base.x + tower.base.w / 2 < h.x + h.w / 2 ? -1 : 1;
     h.onLadder = false;
     addHelperFloater(state, h, `+${add}`, "#d8b45a");
     return;
@@ -201,7 +301,7 @@ function updateMason(state: HelperState, h: Helper, dt: number) {
     if (near(h, stone.body, 14)) {
       h.carrying = "stone";
       addHelperFloater(state, h, "STONE", "#9a9488");
-      h.workTimer = 0.35;
+      beginWork(h, "pickup", 0.35);
       return;
     }
     walkOnGround(state, h, stone.body.x + stone.body.w / 2 - h.w / 2, dt);
@@ -228,7 +328,9 @@ function updateMason(state: HelperState, h: Helper, dt: number) {
       addHelperFloater(state, h, `+${tower.hp - before}`, "#8fbc8f");
     }
     h.carrying = null;
-    h.workTimer = 1.1;
+    // face the stonework being patched (cosmetic)
+    h.facing = target.body.x + target.body.w / 2 < h.x + h.w / 2 ? -1 : 1;
+    beginWork(h, "repair", 1.1);
     return;
   }
 

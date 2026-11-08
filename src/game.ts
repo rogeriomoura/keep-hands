@@ -112,7 +112,7 @@ export type GameState = {
   shopKeysHeld: Partial<Record<UpgradeId | HireId, boolean>>;
   confirmHeld: boolean;
   lives: number;
-  status: "playing" | "won" | "lost";
+  status: "menu" | "playing" | "won" | "lost";
   elapsed: number;
 };
 
@@ -160,8 +160,11 @@ export function createGame(canvas: HTMLCanvasElement) {
 
   return {
     getState: () => state,
+    start() {
+      state = freshState("playing");
+    },
     restart() {
-      state = freshState();
+      state = freshState("playing");
     },
     dispose() {
       cancelAnimationFrame(raf);
@@ -171,7 +174,7 @@ export function createGame(canvas: HTMLCanvasElement) {
   };
 }
 
-function freshState(): GameState {
+function freshState(status: GameState["status"] = "menu"): GameState {
   const world = createWorld();
   return {
     world,
@@ -196,24 +199,25 @@ function freshState(): GameState {
     camera: { x: 0, y: 0 },
     shake: 0,
     prompt: "",
-    banner: "Quartermaster is open — take your time",
-    bannerLife: 2.8,
+    // First night: skip shop — straight into prep with no upgrades
+    banner: status === "playing" ? "First night — repair & reload before sundown" : "",
+    bannerLife: status === "playing" ? 2.8 : 0,
     wave: 1,
     waveTimer: PREP_SECONDS,
     dayDuration: PREP_SECONDS,
-    dayPhase: "shop",
+    dayPhase: status === "playing" ? "prep" : "shop",
     betweenWaves: true,
     spawnedThisWave: 0,
     toSpawn: 4,
     spawnTimer: 0,
-    gold: 40,
+    gold: 0,
     upgrades: freshUpgrades(),
     crew: freshCrew(),
     shopCooldown: 0,
     shopKeysHeld: {},
-    confirmHeld: false,
+    confirmHeld: true,
     lives: 3,
-    status: "playing",
+    status,
     elapsed: 0,
   };
 }

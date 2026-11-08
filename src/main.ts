@@ -10,18 +10,51 @@ app.innerHTML = `
       Keep Hands
       <span>Maintain the walls. Feed the guns. Survive the night.</span>
     </div>
-    <div class="hud">
+    <div class="hud" id="hud" hidden>
       <div>Phase <strong id="phase">Shop</strong></div>
       <div>Night <strong id="wave">1</strong>/5</div>
       <div>Lives <strong id="lives">3</strong></div>
       <div>Gold <strong id="gold">0</strong></div>
       <div>Carry <strong id="carry">—</strong></div>
       <div>Crew <strong id="crew">—</strong></div>
-      <div class="hint">Shop: 1–4 upgrades · 5–6 hire · Enter prep</div>
     </div>
   </header>
   <div class="stage">
     <canvas id="game"></canvas>
+
+    <div class="overlay title-overlay" id="title">
+      <div class="title-panel">
+        <p class="eyebrow">A keep crew shift</p>
+        <h1>Keep Hands</h1>
+        <p class="lede">
+          You are not the general. You haul powder, patch stone, and keep the guns fed while the night tries to tear the walls down.
+        </p>
+
+        <div class="controls-block">
+          <h2>Controls</h2>
+          <ul class="controls-list">
+            <li><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> Move &amp; climb ladders</li>
+            <li><kbd>Space</kbd> Jump</li>
+            <li><kbd>Z</kbd> Pick up, reload, repair</li>
+            <li><kbd>X</kbd> Drop what you’re carrying</li>
+            <li><kbd>1</kbd>–<kbd>4</kbd> Buy upgrades (shop)</li>
+            <li><kbd>5</kbd>–<kbd>6</kbd> Hire runner / mason (shop)</li>
+            <li><kbd>Enter</kbd> Leave shop → 15s prep</li>
+          </ul>
+        </div>
+
+        <div class="controls-block tip">
+          <h2>How a night works</h2>
+          <p>
+            First night is a clean shift: prep timer, then siege — no shop yet.
+            After that: day shop → prep → night. Spend gold on upgrades and hired help between waves.
+          </p>
+        </div>
+
+        <button type="button" id="start" class="start-btn">Start game</button>
+      </div>
+    </div>
+
     <div class="overlay" id="overlay" hidden>
       <div class="panel">
         <h2 id="end-title">Keep fallen</h2>
@@ -37,38 +70,61 @@ if (!canvas) throw new Error("canvas missing");
 
 const game = createGame(canvas);
 
+const hud = document.querySelector<HTMLDivElement>("#hud")!;
 const phaseEl = document.querySelector("#phase")!;
 const waveEl = document.querySelector("#wave")!;
 const livesEl = document.querySelector("#lives")!;
 const goldEl = document.querySelector("#gold")!;
 const carryEl = document.querySelector("#carry")!;
 const crewEl = document.querySelector("#crew")!;
+const title = document.querySelector<HTMLDivElement>("#title")!;
 const overlay = document.querySelector<HTMLDivElement>("#overlay")!;
 const endTitle = document.querySelector("#end-title")!;
 const endBody = document.querySelector("#end-body")!;
+const startBtn = document.querySelector<HTMLButtonElement>("#start")!;
 const restartBtn = document.querySelector<HTMLButtonElement>("#restart")!;
+
+function beginRun() {
+  game.start();
+  title.hidden = true;
+  overlay.hidden = true;
+  hud.hidden = false;
+}
+
+startBtn.addEventListener("click", beginRun);
 
 restartBtn.addEventListener("click", () => {
   game.restart();
   overlay.hidden = true;
+  title.hidden = true;
+  hud.hidden = false;
 });
 
 function syncHud() {
   const s = game.getState();
-  phaseEl.textContent =
-    s.dayPhase === "shop" ? "Shop" : s.dayPhase === "prep" ? "Prep" : "Night";
-  waveEl.textContent = String(Math.min(s.wave, 5));
-  livesEl.textContent = String(Math.max(0, s.lives));
-  goldEl.textContent = String(s.gold);
-  carryEl.textContent = s.player.carrying ?? "—";
-  const crewBits = [
-    s.crew.runner ? "Runner" : null,
-    s.crew.mason ? "Mason" : null,
-  ].filter(Boolean);
-  crewEl.textContent = crewBits.length ? crewBits.join(" · ") : "—";
 
-  if (s.status !== "playing" && overlay.hidden) {
+  if (s.status === "menu") {
+    title.hidden = false;
+    overlay.hidden = true;
+    hud.hidden = true;
+  } else {
+    phaseEl.textContent =
+      s.dayPhase === "shop" ? "Shop" : s.dayPhase === "prep" ? "Prep" : "Night";
+    waveEl.textContent = String(Math.min(s.wave, 5));
+    livesEl.textContent = String(Math.max(0, s.lives));
+    goldEl.textContent = String(s.gold);
+    carryEl.textContent = s.player.carrying ?? "—";
+    const crewBits = [
+      s.crew.runner ? "Runner" : null,
+      s.crew.mason ? "Mason" : null,
+    ].filter(Boolean);
+    crewEl.textContent = crewBits.length ? crewBits.join(" · ") : "—";
+    hud.hidden = false;
+  }
+
+  if ((s.status === "won" || s.status === "lost") && overlay.hidden) {
     overlay.hidden = false;
+    title.hidden = true;
     if (s.status === "won") {
       endTitle.textContent = "Night held";
       endBody.textContent =

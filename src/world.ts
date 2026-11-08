@@ -17,6 +17,12 @@ export type Tower = {
   damage: number;
   hp: number;
   maxHp: number;
+  /** Barrel aim in radians; 0 = right */
+  aimAngle: number;
+  /** Seconds of muzzle flash remaining */
+  muzzleFlash: number;
+  /** Visual recoil kick on the carriage */
+  recoil: number;
 };
 
 export type WallSegment = {
@@ -137,6 +143,9 @@ function makeTower(id: string, x: number, groundY: number, topHeight: number): T
     damage: 16,
     hp: 70,
     maxHp: 70,
+    aimAngle: -0.15,
+    muzzleFlash: 0,
+    recoil: 0,
   };
 }
 

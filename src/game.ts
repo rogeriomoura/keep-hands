@@ -567,36 +567,78 @@ function collideAxes(
   }
 }
 
+function cannonPivot(tower: { platform: { x: number; y: number; w: number } }) {
+  return {
+    x: tower.platform.x + tower.platform.w * 0.55,
+    y: tower.platform.y - 6,
+  };
+}
+
+function slewAim(tower: { aimAngle: number }, desired: number, dt: number, rate: number) {
+  let delta = desired - tower.aimAngle;
+  while (delta > Math.PI) delta -= Math.PI * 2;
+  while (delta < -Math.PI) delta += Math.PI * 2;
+  tower.aimAngle += delta * Math.min(1, dt * rate);
+}
+
 function updateTowers(state: GameState, dt: number) {
   for (const tower of state.world.towers) {
-    if (tower.hp <= 0 || tower.ammo <= 0) continue;
-    tower.fireTimer -= dt;
-    if (tower.fireTimer > 0) continue;
+    tower.muzzleFlash = Math.max(0, tower.muzzleFlash - dt);
+    tower.recoil = Math.max(0, tower.recoil - dt * 4);
 
-    const originX = tower.platform.x + tower.platform.w / 2;
-    const originY = tower.platform.y + 8;
+    if (tower.hp <= 0) continue;
+
+    const pivot = cannonPivot(tower);
+    const armed = tower.ammo > 0;
+
+    // Empty guns go dormant — droop and stop tracking
+    if (!armed) {
+      slewAim(tower, 0.52, dt, 2.4);
+      continue;
+    }
+
     let best: Enemy | null = null;
-    let bestDist = tower.range;
+    let bestDist = tower.range * 1.05;
 
     for (const e of state.enemies) {
       const cx = e.x + e.w / 2;
       const cy = e.y + e.h / 2;
-      const dist = Math.hypot(cx - originX, cy - originY);
-      if (dist < bestDist && cx >= originX - 40) {
+      const dist = Math.hypot(cx - pivot.x, cy - pivot.y);
+      // Any raider in range — including those under the tower base
+      if (dist < bestDist) {
         best = e;
         bestDist = dist;
       }
     }
 
-    if (!best) continue;
+    if (best) {
+      // Lead moving raiders so the barrel visibly tracks them
+      const lead = 0.18;
+      const tx = best.x + best.w / 2 - best.speed * lead;
+      const ty = best.y + best.h * 0.45;
+      const desired = Math.atan2(ty - pivot.y, tx - pivot.x);
+      slewAim(tower, desired, dt, 10);
+    } else {
+      // Armed but idle — stay ready, slightly elevated downrange
+      slewAim(tower, -0.18, dt, 2.2);
+    }
 
-    const tx = best.x + best.w / 2;
-    const ty = best.y + best.h / 2;
-    const ang = Math.atan2(ty - originY, tx - originX);
+    tower.fireTimer -= dt;
+    if (tower.fireTimer > 0 || !best) continue;
+
+    // Fire along the true line to the target so near-base shots aren't blocked by lag
+    const aimTx = best.x + best.w / 2;
+    const aimTy = best.y + best.h * 0.45;
+    const ang = Math.atan2(aimTy - pivot.y, aimTx - pivot.x);
+    tower.aimAngle = ang;
+
+    const barrelLen = 28;
+    const muzzleX = pivot.x + Math.cos(ang) * barrelLen;
+    const muzzleY = pivot.y + Math.sin(ang) * barrelLen;
     const speed = 440;
     state.projectiles.push({
-      x: originX,
-      y: originY,
+      x: muzzleX,
+      y: muzzleY,
       vx: Math.cos(ang) * speed,
       vy: Math.sin(ang) * speed,
       damage: tower.damage,
@@ -604,9 +646,11 @@ function updateTowers(state: GameState, dt: number) {
     });
     tower.ammo -= 1;
     tower.fireTimer = tower.fireCooldown;
+    tower.muzzleFlash = 0.12;
+    tower.recoil = 1;
 
     if (tower.ammo === 0) {
-      addFloater(state, originX, originY - 20, "EMPTY!", "#e8a050");
+      addFloater(state, pivot.x, pivot.y - 24, "EMPTY!", "#e8a050");
     }
   }
 }

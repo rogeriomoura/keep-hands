@@ -1,5 +1,6 @@
 import type { GameState } from "./game";
 import { HIRE_DEFS, canHire, hireCost } from "./hires";
+import { getShopLayout } from "./shopLayout";
 import { UPGRADE_DEFS, canBuy, upgradeCost } from "./upgrades";
 
 export function render(ctx: CanvasRenderingContext2D, state: GameState) {
@@ -641,10 +642,8 @@ function drawShopPhase(
   viewW: number,
   viewH: number,
 ) {
-  const cx = viewW / 2;
-  const panelW = 680;
-  const panelH = 460;
-  const top = Math.max(24, (viewH - panelH) / 2);
+  const layout = getShopLayout(viewW, viewH);
+  const { cx, panelW, panelH, top, upgradeY, hireY } = layout;
 
   ctx.save();
   ctx.fillStyle = "rgba(12, 10, 8, 0.45)";
@@ -671,26 +670,22 @@ function drawShopPhase(
     top + 64,
   );
 
-  // Upgrades row
-  const upgradeY = top + 98;
   ctx.fillStyle = "#cbb89a";
   ctx.font = "600 12px IBM Plex Sans, sans-serif";
-  ctx.fillText("UPGRADES", cx, upgradeY);
+  ctx.fillText("UPGRADES — click or tap a card", cx, upgradeY);
 
-  const slotW = 140;
-  const cardH = 110;
-  const startX = cx - (UPGRADE_DEFS.length * slotW) / 2;
-  UPGRADE_DEFS.forEach((def, i) => {
+  layout.upgrades.forEach((slot, i) => {
+    const def = UPGRADE_DEFS[i]!;
     const level = state.upgrades[def.id];
     const maxed = level >= def.maxLevel;
     const cost = maxed ? 0 : upgradeCost(def.id, level);
     const affordable = canBuy(def.id, state.upgrades, state.gold);
     drawShopCard(
       ctx,
-      startX + i * slotW + 8,
-      upgradeY + 12,
-      slotW - 16,
-      cardH,
+      slot.rect.x,
+      slot.rect.y,
+      slot.rect.w,
+      slot.rect.h,
       def.key,
       def.name,
       def.blurb,
@@ -701,23 +696,20 @@ function drawShopPhase(
     );
   });
 
-  // Hire row — clear gap under upgrades
-  const hireY = upgradeY + 12 + cardH + 36;
   ctx.fillStyle = "#cbb89a";
   ctx.font = "600 12px IBM Plex Sans, sans-serif";
   ctx.fillText("HIRE HELP", cx, hireY);
 
-  const hireW = 200;
-  const hireStart = cx - (HIRE_DEFS.length * hireW) / 2;
-  HIRE_DEFS.forEach((def, i) => {
+  layout.hires.forEach((slot, i) => {
+    const def = HIRE_DEFS[i]!;
     const owned = state.crew[def.id];
     const affordable = canHire(def.id, state.crew, state.gold);
     drawShopCard(
       ctx,
-      hireStart + i * hireW + 8,
-      hireY + 12,
-      hireW - 16,
-      cardH,
+      slot.rect.x,
+      slot.rect.y,
+      slot.rect.w,
+      slot.rect.h,
       def.key,
       def.name,
       def.blurb,
@@ -728,14 +720,17 @@ function drawShopPhase(
     );
   });
 
-  // Footer hint — below hire cards with breathing room
-  ctx.fillStyle = "#e8dcc8";
-  ctx.font = "600 14px IBM Plex Sans, sans-serif";
-  ctx.fillText(
-    "Press Enter when ready — then 15s to repair & reload",
-    cx,
-    hireY + 12 + cardH + 36,
-  );
+  const r = layout.ready;
+  ctx.fillStyle = "rgba(140, 80, 36, 0.95)";
+  roundRect(ctx, r.x, r.y, r.w, r.h, 8);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(232, 180, 90, 0.7)";
+  ctx.lineWidth = 2;
+  roundRect(ctx, r.x, r.y, r.w, r.h, 8);
+  ctx.stroke();
+  ctx.fillStyle = "#fff6e8";
+  ctx.font = "700 15px IBM Plex Sans, sans-serif";
+  ctx.fillText("Ready — begin 15s prep", cx, r.y + 26);
 
   ctx.textAlign = "left";
   ctx.restore();

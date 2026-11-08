@@ -1,23 +1,28 @@
 export type KeyState = Record<string, boolean>;
 
+const GAME_KEYS = new Set([
+  "Space",
+  "ArrowLeft",
+  "ArrowRight",
+  "ArrowUp",
+  "ArrowDown",
+  "KeyZ",
+  "KeyX",
+  "Digit1",
+  "Digit2",
+  "Digit3",
+  "Digit4",
+  "Digit5",
+  "Digit6",
+  "Enter",
+]);
+
 export function createInput() {
   const keys: KeyState = {};
 
   const onDown = (e: KeyboardEvent) => {
     keys[e.code] = true;
-    if (
-      e.code === "Space" ||
-      e.code.startsWith("Arrow") ||
-      e.code === "KeyZ" ||
-      e.code === "KeyX" ||
-      e.code === "Digit1" ||
-      e.code === "Digit2" ||
-      e.code === "Digit3" ||
-      e.code === "Digit4" ||
-      e.code === "Digit5" ||
-      e.code === "Digit6" ||
-      e.code === "Enter"
-    ) {
+    if (GAME_KEYS.has(e.code) || e.code.startsWith("Arrow")) {
       e.preventDefault();
     }
   };
@@ -31,6 +36,12 @@ export function createInput() {
 
   return {
     keys,
+    setKey(code: string, down: boolean) {
+      keys[code] = down;
+    },
+    clearKeys() {
+      for (const k of Object.keys(keys)) keys[k] = false;
+    },
     dispose() {
       window.removeEventListener("keydown", onDown);
       window.removeEventListener("keyup", onUp);

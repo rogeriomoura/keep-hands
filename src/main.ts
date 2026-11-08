@@ -37,9 +37,9 @@ app.innerHTML = `
             <li><kbd>Space</kbd> Jump</li>
             <li><kbd>Z</kbd> Pick up, reload, repair</li>
             <li><kbd>X</kbd> Drop what you’re carrying</li>
-            <li><kbd>1</kbd>–<kbd>4</kbd> Buy upgrades (shop)</li>
-            <li><kbd>5</kbd>–<kbd>6</kbd> Hire runner / mason (shop)</li>
-            <li><kbd>Enter</kbd> Leave shop → 15s prep</li>
+            <li><kbd>1</kbd>–<kbd>4</kbd> or click/tap shop cards to buy</li>
+            <li><kbd>5</kbd>–<kbd>6</kbd> or click/tap to hire help</li>
+            <li><kbd>Enter</kbd> or Ready button → 15s prep</li>
           </ul>
         </div>
 
@@ -103,11 +103,9 @@ let pendingRestart = false;
 function needsLandscape(): boolean {
   const portrait = window.matchMedia("(orientation: portrait)").matches;
   if (!portrait) return false;
-  const touch =
-    "ontouchstart" in window ||
-    navigator.maxTouchPoints > 0 ||
-    window.matchMedia("(pointer: coarse)").matches;
-  return touch || window.innerWidth <= 920;
+  // Phones/tablets only — not a resized desktop browser window.
+  // Desktop usually has hover + fine pointer even when the window is narrow.
+  return window.matchMedia("(hover: none) and (pointer: coarse)").matches;
 }
 
 async function requestLandscape() {

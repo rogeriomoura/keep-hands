@@ -20,6 +20,7 @@ import {
   type UpgradeId,
   type Upgrades,
 } from "./upgrades";
+import { getShopLayout, hitTestShop } from "./shopLayout";
 import {
   createWorld,
   expand,
@@ -143,6 +144,43 @@ export function createGame(canvas: HTMLCanvasElement) {
   resize();
   window.addEventListener("resize", resize);
 
+  const canvasPoint = (e: PointerEvent) => {
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: ((e.clientX - rect.left) / rect.width) * (canvas.clientWidth || rect.width),
+      y: ((e.clientY - rect.top) / rect.height) * (canvas.clientHeight || rect.height),
+    };
+  };
+
+  const onPointerDown = (e: PointerEvent) => {
+    if (state.status !== "playing" || state.dayPhase !== "shop") return;
+    if (pausedForOrientation) return;
+    const { x, y } = canvasPoint(e);
+    const viewW = canvas.clientWidth || canvas.width;
+    const viewH = canvas.clientHeight || canvas.height;
+    const hit = hitTestShop(getShopLayout(viewW, viewH), x, y);
+    if (!hit) return;
+    e.preventDefault();
+    if (hit.kind === "upgrade") tryBuyUpgrade(state, hit.id);
+    else if (hit.kind === "hire") tryHire(state, hit.id);
+    else confirmShopReady(state);
+  };
+
+  const onPointerMove = (e: PointerEvent) => {
+    if (state.status !== "playing" || state.dayPhase !== "shop") {
+      canvas.style.cursor = "default";
+      return;
+    }
+    const { x, y } = canvasPoint(e);
+    const viewW = canvas.clientWidth || canvas.width;
+    const viewH = canvas.clientHeight || canvas.height;
+    const hit = hitTestShop(getShopLayout(viewW, viewH), x, y);
+    canvas.style.cursor = hit ? "pointer" : "default";
+  };
+
+  canvas.addEventListener("pointerdown", onPointerDown);
+  canvas.addEventListener("pointermove", onPointerMove);
+
   const frame = (now: number) => {
     const dt = Math.min(0.033, (now - last) / 1000);
     last = now;
@@ -164,17 +202,24 @@ export function createGame(canvas: HTMLCanvasElement) {
     start() {
       state = freshState("playing");
       pausedForOrientation = false;
+      input.clearKeys();
     },
     restart() {
       state = freshState("playing");
       pausedForOrientation = false;
+      input.clearKeys();
     },
     setOrientationPaused(paused: boolean) {
       pausedForOrientation = paused;
     },
+    setKey(code: string, down: boolean) {
+      input.setKey(code, down);
+    },
     dispose() {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", resize);
+      canvas.removeEventListener("pointerdown", onPointerDown);
+      canvas.removeEventListener("pointermove", onPointerMove);
       input.dispose();
     },
   };
@@ -277,15 +322,7 @@ function updateWaves(state: GameState, dt: number, keys: KeyState) {
       const confirm = Boolean(keys["Enter"]);
       const was = state.confirmHeld;
       state.confirmHeld = confirm;
-      if (confirm && !was) {
-        state.dayPhase = "prep";
-        state.dayDuration = PREP_SECONDS;
-        state.waveTimer = PREP_SECONDS;
-        state.banner = "Prep time — repair & reload";
-        state.bannerLife = 2;
-        state.confirmHeld = true;
-        state.player.jumpLocked = true;
-      }
+      if (confirm && !was) confirmShopReady(state);
       return;
     }
 
@@ -330,6 +367,17 @@ function beginDayShop(state: GameState) {
   state.confirmHeld = true; // ignore held Space/Enter from jump
   state.banner = "Quartermaster is open — take your time";
   state.bannerLife = 2.5;
+}
+
+function confirmShopReady(state: GameState) {
+  if (state.dayPhase !== "shop" || state.status !== "playing") return;
+  state.dayPhase = "prep";
+  state.dayDuration = PREP_SECONDS;
+  state.waveTimer = PREP_SECONDS;
+  state.banner = "Prep time — repair & reload";
+  state.bannerLife = 2;
+  state.confirmHeld = true;
+  state.player.jumpLocked = true;
 }
 
 function spawnEnemy(state: GameState) {

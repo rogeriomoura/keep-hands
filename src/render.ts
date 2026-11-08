@@ -1,4 +1,5 @@
 import type { GameState } from "./game";
+import { enemyPose } from "./enemyPose";
 import { HIRE_DEFS, canHire, hireCost } from "./hires";
 import { getShopLayout } from "./shopLayout";
 import { UPGRADE_DEFS, canBuy, upgradeCost } from "./upgrades";
@@ -22,6 +23,7 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState) {
   drawTowers(ctx, state);
   drawSupplies(ctx, state);
   drawEnemies(ctx, state);
+  drawDebris(ctx, state);
   drawProjectiles(ctx, state);
   drawHelpers(ctx, state);
   drawPlayer(ctx, state);
@@ -483,53 +485,86 @@ function drawEnemies(ctx: CanvasRenderingContext2D, state: GameState) {
     const body = brute ? "#5a2a28" : "#3a4a38";
     const shade = brute ? "#3a1814" : "#243028";
     const skin = brute ? "#8a5a48" : "#6a7a68";
-    const raise = Math.max(0, Math.min(1, e.armRaise));
+    const pose = enemyPose(e);
+    const lx = pose.leanX;
+    const ly = pose.leanY;
+    const sq = pose.squash;
 
-    // legs
+    // legs — planted while swinging; front foot steps into the strike
     const walk = e.attacking ? 0 : Math.sin(e.walkPhase) * 3;
     ctx.fillStyle = shade;
-    ctx.fillRect(e.x + 3, e.y + e.h - 12, 6, 12);
+    ctx.fillRect(e.x + 3 - pose.step - Math.max(0, -walk) * 0.5, e.y + e.h - 12, 6, 12);
     ctx.fillRect(e.x + e.w - 9, e.y + e.h - 12 + walk, 6, 12 - Math.abs(walk) * 0.2);
 
-    // torso
-    ctx.fillStyle = body;
-    ctx.fillRect(e.x + 3, e.y + 10, e.w - 6, e.h - 20);
-
-    // head
-    ctx.fillStyle = skin;
-    const headW = brute ? 14 : 11;
-    ctx.fillRect(e.x + (e.w - headW) / 2, e.y + 1, headW, 11);
-    ctx.fillStyle = "#1a1612";
-    ctx.fillRect(e.x + 4, e.y + 5, 4, 3);
-
-    // arms — face left toward the keep; raise pivots from hang → overhead
-    const shoulderY = e.y + 13;
     const armLen = brute ? 16 : 13;
     const armW = brute ? 5 : 4;
-    // hang (~0.5 rad forward/down) → raised up (~-2.1 rad)
-    const angle = 0.55 - raise * 2.55;
+    const shoulderY = e.y + 13 + ly + sq * 1.5;
+    const frontSX = e.x + 5 + lx;
+    const backSX = e.x + e.w - 5 + lx;
 
-    drawEnemyArm(ctx, e.x + 5, shoulderY, angle, armLen, armW, shade, skin);
+    // back arm sits behind the torso; brutes grip the maul two-handed
+    let backAngle = pose.back;
+    let backLen = armLen - 1;
+    if (brute && e.attacking) {
+      const handR = armLen - 1;
+      const hx = frontSX - Math.sin(pose.front) * handR;
+      const hy = shoulderY + Math.cos(pose.front) * handR;
+      const vx = hx - backSX;
+      const vy = hy - (shoulderY + 1);
+      backAngle = Math.atan2(-vx, vy);
+      backLen = Math.min(armLen + 6, Math.hypot(vx, vy) + 1);
+    }
+    drawEnemyArm(ctx, backSX, shoulderY + 1, backAngle, backLen, armW, shade, skin, null);
+
+    // torso (squashes wide/short on impact)
+    ctx.fillStyle = body;
+    ctx.fillRect(
+      e.x + 3 + lx - sq,
+      e.y + 10 + ly + sq * 2,
+      e.w - 6 + sq * 2,
+      e.h - 20 - sq * 2,
+    );
+
+    // head leads the lean a little
+    ctx.fillStyle = skin;
+    const headW = brute ? 14 : 11;
+    const hx = e.x + (e.w - headW) / 2 + lx * 1.25;
+    const hy = e.y + 1 + ly * 1.3 + sq * 2;
+    ctx.fillRect(hx, hy, headW, 11);
+    ctx.fillStyle = "#1a1612";
+    ctx.fillRect(e.x + 4 + lx * 1.25, hy + 4, 4, 3);
+
+    // swing smear trailing the weapon head
+    if (pose.smear > 0.01 && pose.smearSpan > 0.05) {
+      // the strike rotates counter-clockwise (over the head), so the trail sits at larger angles
+      const r = armLen + (brute ? 14 : 9);
+      const tip = pose.front + Math.PI / 2;
+      ctx.save();
+      ctx.lineCap = "round";
+      ctx.strokeStyle = `rgba(240, 228, 204, ${pose.smear * 0.4})`;
+      ctx.lineWidth = brute ? 10 : 7;
+      ctx.beginPath();
+      ctx.arc(frontSX, shoulderY, r, tip + pose.smearSpan, tip, true);
+      ctx.stroke();
+      ctx.strokeStyle = `rgba(255, 246, 228, ${pose.smear * 0.55})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(frontSX, shoulderY, r + (brute ? 3 : 2), tip + Math.min(0.9, pose.smearSpan), tip, true);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     drawEnemyArm(
       ctx,
-      e.x + e.w - 5,
-      shoulderY + 1,
-      angle + 0.18,
-      armLen - 1,
+      frontSX,
+      shoulderY,
+      pose.front,
+      armLen,
       armW,
       shade,
       skin,
+      brute ? "maul" : "club",
     );
-
-    // crude club/weapon on lead arm when attacking hard
-    if (raise > 0.35) {
-      ctx.save();
-      ctx.translate(e.x + 5, shoulderY);
-      ctx.rotate(angle);
-      ctx.fillStyle = "#4a3a28";
-      ctx.fillRect(-2, armLen - 2, 4, 10);
-      ctx.restore();
-    }
 
     ctx.fillStyle = "#c45c2a";
     ctx.fillRect(e.x + 4, e.y - 8, (e.w - 8) * (e.hp / e.maxHp), 4);
@@ -545,15 +580,70 @@ function drawEnemyArm(
   width: number,
   sleeve: string,
   hand: string,
+  weapon: "club" | "maul" | null,
 ) {
   ctx.save();
   ctx.translate(sx, sy);
   ctx.rotate(angle);
   ctx.fillStyle = sleeve;
   ctx.fillRect(-width / 2, 0, width, len - 3);
+  if (weapon === "club") {
+    ctx.fillStyle = "#4a3a28";
+    ctx.fillRect(-1.5, len - 3, 3, 9);
+    ctx.fillStyle = "#3a2c1e";
+    ctx.fillRect(-3, len + 4, 6, 6);
+    ctx.fillStyle = "#6a5440";
+    ctx.fillRect(-3, len + 4, 2, 6);
+  } else if (weapon === "maul") {
+    ctx.fillStyle = "#4a3a28";
+    ctx.fillRect(-1.5, len - 3, 3, 13);
+    ctx.fillStyle = "#5a564e";
+    ctx.fillRect(-6, len + 8, 12, 8);
+    ctx.fillStyle = "#7a766c";
+    ctx.fillRect(-6, len + 8, 12, 2);
+  }
   ctx.fillStyle = hand;
   ctx.fillRect(-width / 2 - 0.5, len - 4, width + 1, 5);
   ctx.restore();
+}
+
+function drawDebris(ctx: CanvasRenderingContext2D, state: GameState) {
+  for (const d of state.debris) {
+    const t = Math.max(0, d.life / d.maxLife);
+    if (d.kind === "chip") {
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, d.life / 0.2);
+      ctx.translate(d.x, d.y);
+      ctx.rotate(d.spin * (d.maxLife - d.life));
+      ctx.fillStyle = d.color;
+      ctx.fillRect(-d.size / 2, -d.size / 2, d.size, d.size);
+      ctx.restore();
+    } else if (d.kind === "dust") {
+      ctx.fillStyle = `rgba(${d.color}, ${0.35 * t})`;
+      ctx.beginPath();
+      ctx.arc(d.x, d.y, d.size, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // strike spark: a quick star burst at the contact point
+      ctx.save();
+      ctx.translate(d.x, d.y);
+      ctx.rotate(d.spin);
+      ctx.globalAlpha = t;
+      ctx.strokeStyle = d.color;
+      ctx.lineWidth = 2;
+      ctx.lineCap = "round";
+      const r = d.size * (1.2 - t * 0.4);
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        const inner = i % 2 === 0 ? 0.25 : 0.4;
+        ctx.moveTo(Math.cos(a) * r * inner, Math.sin(a) * r * inner);
+        ctx.lineTo(Math.cos(a) * r * (i % 2 === 0 ? 1 : 0.6), Math.sin(a) * r * (i % 2 === 0 ? 1 : 0.6));
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
 }
 
 function drawProjectiles(ctx: CanvasRenderingContext2D, state: GameState) {

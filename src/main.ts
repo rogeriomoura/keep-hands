@@ -191,7 +191,8 @@ function launchRestart() {
 }
 
 startBtn.addEventListener("click", async () => {
-  await enterImmersive(document.documentElement);
+  // Phones/tablets go immersive on start; desktop browsers stay windowed (use the FS button)
+  if (touchPlay) await enterImmersive(document.documentElement);
   if (syncRotateGate()) {
     pendingStart = true;
     return;
@@ -200,7 +201,8 @@ startBtn.addEventListener("click", async () => {
 });
 
 restartBtn.addEventListener("click", async () => {
-  await enterImmersive(document.documentElement);
+  // Phones/tablets go immersive on start; desktop browsers stay windowed (use the FS button)
+  if (touchPlay) await enterImmersive(document.documentElement);
   if (syncRotateGate()) {
     pendingRestart = true;
     return;

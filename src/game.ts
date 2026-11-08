@@ -29,6 +29,12 @@ import {
   type World,
 } from "./world";
 import { render } from "./render";
+import {
+  ARM_READY,
+  marchArm,
+  swingTiming,
+  type AttackPhase,
+} from "./enemyPose";
 
 export type CarryKind = "ammo" | "stone";
 
@@ -57,11 +63,14 @@ export type Enemy = {
   hp: number;
   maxHp: number;
   speed: number;
-  attackTimer: number;
-  attackCooldown: number;
   attacking: boolean;
-  /** 0 = arms down, 1 = arms raised to strike */
-  armRaise: number;
+  /** Melee swing phase; pose is derived from phase + phaseT in enemyPose.ts */
+  attackPhase: AttackPhase;
+  phaseT: number;
+  /** Per-swing tempo jitter (~0.9–1.1) so a crowd doesn't hammer in lockstep */
+  swingScale: number;
+  /** Arm angle when the windup began, so the raise starts from the march pose */
+  swingFrom: number;
   damage: number;
   walkPhase: number;
 };
@@ -73,6 +82,20 @@ export type Projectile = {
   vy: number;
   damage: number;
   life: number;
+};
+
+/** Short-lived impact effects: stone chips, dust puffs, strike sparks */
+export type Debris = {
+  kind: "chip" | "dust" | "spark";
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
+  size: number;
+  spin: number;
+  color: string;
 };
 
 export type Floater = {
@@ -91,6 +114,7 @@ export type GameState = {
   enemies: Enemy[];
   projectiles: Projectile[];
   floaters: Floater[];
+  debris: Debris[];
   helpers: Helper[];
   camera: { x: number; y: number };
   shake: number;
@@ -246,6 +270,7 @@ function freshState(status: GameState["status"] = "menu"): GameState {
     enemies: [],
     projectiles: [],
     floaters: [],
+    debris: [],
     helpers: [],
     camera: { x: 0, y: 0 },
     shake: 0,
@@ -296,6 +321,7 @@ function update(state: GameState, keys: KeyState, dt: number, canvas: HTMLCanvas
   }
 
   updateFloaters(state, dt);
+  updateDebris(state, dt);
   updateCamera(state, canvas);
 
   if (state.lives <= 0) {
@@ -393,10 +419,11 @@ function spawnEnemy(state: GameState) {
     hp: brute ? 78 : 28 + state.wave * 2,
     maxHp: brute ? 78 : 28 + state.wave * 2,
     speed: brute ? 40 : 68 + state.wave * 5,
-    attackTimer: 0,
-    attackCooldown: 1,
     attacking: false,
-    armRaise: 0,
+    attackPhase: "none",
+    phaseT: 0,
+    swingScale: 1,
+    swingFrom: ARM_READY,
     damage: brute ? 14 : 8,
     walkPhase: Math.random() * Math.PI * 2,
   });
@@ -742,6 +769,11 @@ function updateEnemies(state: GameState, dt: number) {
 
     if (!target) {
       e.x -= e.speed * dt;
+      // last structure fell mid-swing — drop the pose and march for the gate
+      e.attacking = false;
+      e.attackPhase = "none";
+      e.phaseT = 0;
+      e.walkPhase += dt * (e.speed * 0.08);
       if (e.x + e.w < gate - 40) {
         state.lives -= 1;
         e.hp = 0;
@@ -755,21 +787,29 @@ function updateEnemies(state: GameState, dt: number) {
     if (e.x > target.edge + 2) {
       e.x -= e.speed * dt;
       e.attacking = false;
-      e.attackTimer = 0.35;
+      e.attackPhase = "none";
+      e.phaseT = 0;
       e.walkPhase += dt * (e.speed * 0.08);
-      // light arm sway while marching
-      e.armRaise += (0.12 + Math.sin(e.walkPhase) * 0.08 - e.armRaise) * Math.min(1, dt * 10);
     } else {
-      e.attacking = true;
-      e.attackTimer -= dt;
-      // wind-up: arms climb as the swing charges
-      const windup = 1 - Math.max(0, e.attackTimer) / e.attackCooldown;
-      e.armRaise += (windup - e.armRaise) * Math.min(1, dt * 14);
-      if (e.attackTimer <= 0) {
+      if (!e.attacking) {
+        e.attacking = true;
+        beginWindup(e);
+      }
+      e.phaseT += dt;
+      const timing = swingTiming(e.kind, e.swingScale);
+      if (e.attackPhase === "windup" && e.phaseT >= timing.windup) {
+        e.attackPhase = "strike";
+        e.phaseT -= timing.windup;
+      }
+      if (e.attackPhase === "strike" && e.phaseT >= timing.strike) {
+        // club meets the wall on the last frame of the downswing
         damageStructure(state, target.id, e.damage);
-        e.attackCooldown = 1.0;
-        e.attackTimer = e.attackCooldown;
-        e.armRaise = 1;
+        spawnImpact(state, e, target);
+        e.attackPhase = "recover";
+        e.phaseT -= timing.strike;
+      }
+      if (e.attackPhase === "recover" && e.phaseT >= timing.recover) {
+        beginWindup(e);
       }
     }
   }
@@ -779,6 +819,97 @@ function updateEnemies(state: GameState, dt: number) {
   for (const wall of state.world.walls) {
     if (wall.hp < 0) wall.hp = 0;
   }
+}
+
+function beginWindup(e: Enemy) {
+  e.swingFrom =
+    e.attackPhase === "none" ? marchArm(e.walkPhase) : ARM_READY;
+  e.attackPhase = "windup";
+  e.phaseT = 0;
+  e.swingScale = 0.9 + Math.random() * 0.2;
+}
+
+function spawnImpact(
+  state: GameState,
+  e: Enemy,
+  target: { id: string; edge: number },
+) {
+  const brute = e.kind === "brute";
+  const isWall = state.world.walls.some((w) => w.id === target.id);
+  const chips = isWall
+    ? ["#958675", "#7a6d5c", "#5a4a3a"]
+    : ["#6e6458", "#5c5348", "#3a342c"];
+  const x = target.edge;
+  const y = e.y + (brute ? 25 : 22);
+
+  const chipCount = brute ? 9 : 6;
+  for (let i = 0; i < chipCount; i++) {
+    // fly back out of the wall face (east) and up, then fall
+    const ang = -Math.PI * (0.05 + Math.random() * 0.45);
+    const spd = (brute ? 120 : 90) + Math.random() * 90;
+    state.debris.push({
+      kind: "chip",
+      x: x + Math.random() * 3,
+      y: y + (Math.random() - 0.5) * 8,
+      vx: Math.cos(ang) * spd,
+      vy: Math.sin(ang) * spd,
+      life: 0.45 + Math.random() * 0.35,
+      maxLife: 0.8,
+      size: 1.5 + Math.random() * (brute ? 3 : 2),
+      spin: (Math.random() - 0.5) * 20,
+      color: chips[Math.floor(Math.random() * chips.length)],
+    });
+  }
+  for (let i = 0; i < (brute ? 3 : 2); i++) {
+    state.debris.push({
+      kind: "dust",
+      x: x + 4 + Math.random() * 6,
+      y: y + (Math.random() - 0.5) * 6,
+      vx: 18 + Math.random() * 22,
+      vy: -10 - Math.random() * 14,
+      life: 0.5 + Math.random() * 0.2,
+      maxLife: 0.7,
+      size: brute ? 9 : 7,
+      spin: 0,
+      color: "200, 186, 164",
+    });
+  }
+  state.debris.push({
+    kind: "spark",
+    x: x + 1,
+    y,
+    vx: 0,
+    vy: 0,
+    life: 0.1,
+    maxLife: 0.1,
+    size: brute ? 13 : 10,
+    spin: Math.random() * Math.PI,
+    color: "#fff2d0",
+  });
+}
+
+function updateDebris(state: GameState, dt: number) {
+  const ground = state.world.groundY;
+  for (const d of state.debris) {
+    d.life -= dt;
+    if (d.kind === "chip") {
+      d.vy += 620 * dt;
+      d.x += d.vx * dt;
+      d.y += d.vy * dt;
+      if (d.y > ground - d.size) {
+        // bounce once, then skid to a stop
+        d.y = ground - d.size;
+        d.vy *= -0.3;
+        d.vx *= 0.55;
+      }
+    } else if (d.kind === "dust") {
+      d.x += d.vx * dt;
+      d.y += d.vy * dt;
+      d.vx *= 1 - Math.min(1, dt * 3);
+      d.size += dt * 16;
+    }
+  }
+  state.debris = state.debris.filter((d) => d.life > 0);
 }
 
 function easternStructure(state: GameState): { id: string; edge: number } | null {

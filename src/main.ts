@@ -1,8 +1,17 @@
 import "./style.css";
 import { createGame } from "./game";
+import {
+  bindTouchControls,
+  enterImmersive,
+  isFullscreenActive,
+  isTouchPlayDevice,
+} from "./touch";
 
 const app = document.querySelector<HTMLDivElement>("#app");
 if (!app) throw new Error("#app missing");
+
+const touchPlay = isTouchPlayDevice();
+if (touchPlay) document.body.classList.add("touch-play");
 
 app.innerHTML = `
   <header class="topbar">
@@ -17,10 +26,26 @@ app.innerHTML = `
       <div>Gold <strong id="gold">0</strong></div>
       <div>Carry <strong id="carry">—</strong></div>
       <div>Crew <strong id="crew">—</strong></div>
+      <button type="button" class="fs-btn" id="fs-btn" aria-label="Fullscreen">Fullscreen</button>
     </div>
   </header>
   <div class="stage">
     <canvas id="game"></canvas>
+
+    <div class="touch-ui" id="touch-ui" hidden>
+      <div class="touch-dpad" aria-label="Movement">
+        <button type="button" class="touch-btn touch-pad" data-key="ArrowUp" aria-label="Up">▲</button>
+        <button type="button" class="touch-btn touch-pad" data-key="ArrowLeft" aria-label="Left">◀</button>
+        <button type="button" class="touch-btn touch-pad touch-pad-center" disabled tabindex="-1"></button>
+        <button type="button" class="touch-btn touch-pad" data-key="ArrowRight" aria-label="Right">▶</button>
+        <button type="button" class="touch-btn touch-pad" data-key="ArrowDown" aria-label="Down">▼</button>
+      </div>
+      <div class="touch-actions" aria-label="Actions">
+        <button type="button" class="touch-btn touch-act" data-key="KeyZ">Act</button>
+        <button type="button" class="touch-btn touch-jump" data-key="Space">Jump</button>
+        <button type="button" class="touch-btn touch-drop" data-key="KeyX">Drop</button>
+      </div>
+    </div>
 
     <div class="overlay title-overlay" id="title">
       <div class="title-panel">
@@ -34,12 +59,11 @@ app.innerHTML = `
           <h2>Controls</h2>
           <ul class="controls-list">
             <li><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> Move &amp; climb ladders</li>
-            <li><kbd>Space</kbd> Jump</li>
-            <li><kbd>Z</kbd> Pick up, reload, repair</li>
-            <li><kbd>X</kbd> Drop what you’re carrying</li>
-            <li><kbd>1</kbd>–<kbd>4</kbd> or click/tap shop cards to buy</li>
-            <li><kbd>5</kbd>–<kbd>6</kbd> or click/tap to hire help</li>
-            <li><kbd>Enter</kbd> or Ready button → 15s prep</li>
+            <li><kbd>Space</kbd> / Jump button — jump</li>
+            <li><kbd>Z</kbd> / Act button — pick up, reload, repair</li>
+            <li><kbd>X</kbd> / Drop button — drop carried item</li>
+            <li>Click or tap shop cards to buy / hire</li>
+            <li><kbd>Enter</kbd> or Ready — start 15s prep</li>
           </ul>
         </div>
 
@@ -49,7 +73,7 @@ app.innerHTML = `
             First night is a clean shift: prep timer, then siege — no shop yet.
             After that: day shop → prep → night. Spend gold on upgrades and hired help between waves.
           </p>
-          <p class="landscape-note">Phones: play in landscape (sideways).</p>
+          <p class="landscape-note">Phones: landscape + on-screen controls. Start enters fullscreen when allowed.</p>
         </div>
 
         <button type="button" id="start" class="start-btn">Start game</button>
@@ -96,6 +120,25 @@ const endBody = document.querySelector("#end-body")!;
 const startBtn = document.querySelector<HTMLButtonElement>("#start")!;
 const restartBtn = document.querySelector<HTMLButtonElement>("#restart")!;
 const rotateGate = document.querySelector<HTMLDivElement>("#rotate-gate")!;
+const touchUi = document.querySelector<HTMLDivElement>("#touch-ui")!;
+const fsBtn = document.querySelector<HTMLButtonElement>("#fs-btn")!;
+
+if (touchPlay) {
+  bindTouchControls(touchUi, (code, down) => game.setKey(code, down));
+}
+
+function syncFullscreenClass() {
+  document.body.classList.toggle("is-fullscreen", isFullscreenActive());
+  if (isFullscreenActive()) document.body.classList.add("immersive");
+  fsBtn.textContent = isFullscreenActive() ? "Exit FS" : "Fullscreen";
+}
+
+fsBtn.addEventListener("click", async (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  await enterImmersive(document.documentElement);
+  syncFullscreenClass();
+});
 
 let pendingStart = false;
 let pendingRestart = false;
@@ -103,31 +146,7 @@ let pendingRestart = false;
 function needsLandscape(): boolean {
   const portrait = window.matchMedia("(orientation: portrait)").matches;
   if (!portrait) return false;
-  // Phones/tablets only — not a resized desktop browser window.
-  // Desktop usually has hover + fine pointer even when the window is narrow.
   return window.matchMedia("(hover: none) and (pointer: coarse)").matches;
-}
-
-async function requestLandscape() {
-  try {
-    const root = document.documentElement;
-    if (!document.fullscreenElement && root.requestFullscreen) {
-      await root.requestFullscreen();
-    }
-  } catch {
-    /* optional */
-  }
-
-  try {
-    const orientation = screen.orientation as ScreenOrientation & {
-      lock?: (orientation: OrientationLockType) => Promise<void>;
-    };
-    if (typeof orientation?.lock === "function") {
-      await orientation.lock("landscape");
-    }
-  } catch {
-    /* many mobile browsers require PWA / fullscreen */
-  }
 }
 
 function syncRotateGate() {
@@ -138,12 +157,28 @@ function syncRotateGate() {
   return block;
 }
 
+function syncTouchUi() {
+  if (!touchPlay) {
+    touchUi.hidden = true;
+    return;
+  }
+  const s = game.getState();
+  const show =
+    s.status === "playing" &&
+    s.dayPhase !== "shop" &&
+    !needsLandscape() &&
+    Boolean(overlay.hidden);
+  touchUi.hidden = !show;
+  document.body.classList.toggle("touch-controls-on", show);
+}
+
 function launchRun() {
   game.start();
   title.hidden = true;
   overlay.hidden = true;
   hud.hidden = false;
   pendingStart = false;
+  syncTouchUi();
 }
 
 function launchRestart() {
@@ -152,10 +187,11 @@ function launchRestart() {
   title.hidden = true;
   hud.hidden = false;
   pendingRestart = false;
+  syncTouchUi();
 }
 
-startBtn.addEventListener("click", () => {
-  void requestLandscape();
+startBtn.addEventListener("click", async () => {
+  await enterImmersive(document.documentElement);
   if (syncRotateGate()) {
     pendingStart = true;
     return;
@@ -163,8 +199,8 @@ startBtn.addEventListener("click", () => {
   launchRun();
 });
 
-restartBtn.addEventListener("click", () => {
-  void requestLandscape();
+restartBtn.addEventListener("click", async () => {
+  await enterImmersive(document.documentElement);
   if (syncRotateGate()) {
     pendingRestart = true;
     return;
@@ -174,11 +210,17 @@ restartBtn.addEventListener("click", () => {
 
 window.addEventListener("orientationchange", () => {
   syncRotateGate();
+  syncTouchUi();
 });
 window.addEventListener("resize", () => {
   syncRotateGate();
+  syncTouchUi();
 });
+document.addEventListener("fullscreenchange", syncFullscreenClass);
+document.addEventListener("webkitfullscreenchange", syncFullscreenClass);
+
 syncRotateGate();
+syncFullscreenClass();
 
 function syncHud() {
   const blocked = syncRotateGate();
@@ -189,6 +231,7 @@ function syncHud() {
   }
 
   if (blocked) {
+    touchUi.hidden = true;
     requestAnimationFrame(syncHud);
     return;
   }
@@ -199,6 +242,7 @@ function syncHud() {
     title.hidden = false;
     overlay.hidden = true;
     hud.hidden = true;
+    touchUi.hidden = true;
   } else {
     phaseEl.textContent =
       s.dayPhase === "shop" ? "Shop" : s.dayPhase === "prep" ? "Prep" : "Night";
@@ -212,11 +256,13 @@ function syncHud() {
     ].filter(Boolean);
     crewEl.textContent = crewBits.length ? crewBits.join(" · ") : "—";
     hud.hidden = false;
+    syncTouchUi();
   }
 
   if ((s.status === "won" || s.status === "lost") && overlay.hidden) {
     overlay.hidden = false;
     title.hidden = true;
+    touchUi.hidden = true;
     if (s.status === "won") {
       endTitle.textContent = "Night held";
       endBody.textContent =

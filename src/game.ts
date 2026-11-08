@@ -866,7 +866,7 @@ function updatePrompt(state: GameState, keys: KeyState) {
   if (!p.carrying) {
     for (const s of state.world.supplies) {
       if (rectsOverlap(body, s.body)) {
-        prompt = `Z — pick up ${s.kind}`;
+        prompt = `Act — pick up ${s.kind}`;
         action = () => {
           p.carrying = s.kind;
           addFloater(state, p.x + p.w / 2, p.y, s.kind.toUpperCase(), "#e8dcc8");
@@ -881,7 +881,7 @@ function updatePrompt(state: GameState, keys: KeyState) {
         if (t.ammo >= t.maxAmmo) {
           prompt = "Tower full";
         } else {
-          prompt = "Z — reload tower";
+          prompt = "Act — reload tower";
           action = () => {
             const need = t.maxAmmo - t.ammo;
             const add = Math.min(need, 3);
@@ -900,7 +900,7 @@ function updatePrompt(state: GameState, keys: KeyState) {
       }
     }
     if (!prompt) {
-      prompt = "X — drop ammo";
+      prompt = "Drop — drop ammo";
       if (keys["KeyX"] && p.interactCooldown <= 0) {
         p.carrying = null;
         p.interactCooldown = 0.25;
@@ -918,7 +918,7 @@ function updatePrompt(state: GameState, keys: KeyState) {
     );
 
     if (wall) {
-      prompt = "Z — repair wall";
+      prompt = "Act — repair wall";
       action = () => {
         const before = wall.hp;
         wall.hp = Math.min(wall.maxHp, wall.hp + 32);
@@ -932,7 +932,7 @@ function updatePrompt(state: GameState, keys: KeyState) {
         );
       };
     } else if (ruinedWall) {
-      prompt = "Z — rebuild wall";
+      prompt = "Act — rebuild wall";
       action = () => {
         ruinedWall.hp = Math.floor(ruinedWall.maxHp * 0.45);
         p.carrying = null;
@@ -961,7 +961,7 @@ function updatePrompt(state: GameState, keys: KeyState) {
         );
       };
     } else if (tower) {
-      prompt = tower.hp <= 0 ? "Z — rebuild tower" : "Z — repair tower";
+      prompt = tower.hp <= 0 ? "Act — rebuild tower" : "Act — repair tower";
       action = () => {
         const before = Math.max(0, tower.hp);
         if (tower.hp <= 0) tower.hp = Math.floor(tower.maxHp * 0.4);
@@ -976,7 +976,7 @@ function updatePrompt(state: GameState, keys: KeyState) {
         );
       };
     } else {
-      prompt = "X — drop stone";
+      prompt = "Drop — drop stone";
       if (keys["KeyX"] && p.interactCooldown <= 0) {
         p.carrying = null;
         p.interactCooldown = 0.25;
@@ -986,7 +986,7 @@ function updatePrompt(state: GameState, keys: KeyState) {
 
   if (!prompt) {
     const ladder = findLadder(state, playerRect(p));
-    if (ladder) prompt = "↑/↓ climb · Space jump off";
+    if (ladder) prompt = "↑/↓ climb · Jump to leap off";
   }
 
   state.prompt = prompt;

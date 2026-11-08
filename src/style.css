@@ -19,10 +19,14 @@
 html,
 body {
   height: 100%;
+  height: 100dvh;
   overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
   background: var(--ink);
   font-family: "IBM Plex Sans", sans-serif;
   color: var(--parchment);
+  touch-action: none;
 }
 
 #app {
@@ -371,5 +375,166 @@ body.must-rotate .topbar {
 @media (orientation: portrait) and (max-width: 920px) {
   .title-panel {
     max-height: none;
+  }
+}
+
+/* —— Mobile / touch play —— */
+body.touch-play .brand span {
+  display: none;
+}
+
+body.touch-play .topbar {
+  padding: 0.4rem 0.65rem;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+body.touch-play .brand {
+  font-size: 1.15rem;
+}
+
+body.touch-play .hud {
+  gap: 0.35rem 0.7rem;
+  font-size: 0.72rem;
+}
+
+body.immersive #app,
+body.is-fullscreen #app {
+  height: 100dvh;
+}
+
+body.immersive .topbar,
+body.is-fullscreen .topbar {
+  padding-top: max(0.35rem, env(safe-area-inset-top));
+  padding-left: max(0.65rem, env(safe-area-inset-left));
+  padding-right: max(0.65rem, env(safe-area-inset-right));
+}
+
+.touch-ui {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding:
+    0
+    max(0.85rem, env(safe-area-inset-right))
+    max(0.85rem, env(safe-area-inset-bottom))
+    max(0.85rem, env(safe-area-inset-left));
+}
+
+.touch-ui[hidden] {
+  display: none !important;
+}
+
+.touch-dpad {
+  pointer-events: auto;
+  display: grid;
+  grid-template-columns: repeat(3, 3.35rem);
+  grid-template-rows: repeat(3, 3.35rem);
+  gap: 0.32rem;
+  margin-bottom: 0.1rem;
+}
+
+.touch-dpad .touch-pad:nth-child(1) { grid-column: 2; grid-row: 1; }
+.touch-dpad .touch-pad:nth-child(2) { grid-column: 1; grid-row: 2; }
+.touch-dpad .touch-pad-center { grid-column: 2; grid-row: 2; opacity: 0; pointer-events: none; }
+.touch-dpad .touch-pad:nth-child(4) { grid-column: 3; grid-row: 2; }
+.touch-dpad .touch-pad:nth-child(5) { grid-column: 2; grid-row: 3; }
+
+.touch-actions {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: flex-end;
+  margin-bottom: 0.1rem;
+}
+
+.touch-btn {
+  appearance: none;
+  border: 2px solid rgba(232, 200, 140, 0.55);
+  background: rgba(18, 14, 10, 0.82);
+  color: #f0e6d4;
+  font: 700 0.9rem "IBM Plex Sans", sans-serif;
+  min-width: 3.35rem;
+  min-height: 3.35rem;
+  border-radius: 0.9rem;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.4);
+}
+
+.touch-btn.is-down,
+.touch-btn:active {
+  background: rgba(196, 92, 42, 0.88);
+  border-color: rgba(232, 180, 90, 0.9);
+  transform: scale(0.96);
+}
+
+.touch-act {
+  min-width: 4.6rem;
+  min-height: 4.6rem;
+  font-size: 1.05rem;
+  background: rgba(160, 88, 36, 0.9);
+  border-color: rgba(232, 180, 90, 0.75);
+}
+
+.touch-jump {
+  min-width: 4.25rem;
+}
+
+.fs-btn {
+  display: none;
+  margin-left: 0.35rem;
+  padding: 0.35rem 0.65rem;
+  font: 600 0.72rem "IBM Plex Sans", sans-serif;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #f0e6d4;
+  background: rgba(196, 92, 42, 0.85);
+  border: 1px solid rgba(232, 180, 90, 0.55);
+  border-radius: 0.4rem;
+  touch-action: manipulation;
+}
+
+body.touch-play .fs-btn {
+  display: inline-block;
+}
+
+body.immersive:not(.is-fullscreen) #app {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
+  z-index: 1;
+}
+
+@media (hover: none) and (pointer: coarse) and (orientation: landscape) {
+  .title-panel {
+    max-height: min(85dvh, 34rem);
+    overflow: auto;
+    padding: 1.25rem 1.35rem 1.4rem;
+  }
+
+  .title-panel h1 {
+    font-size: clamp(1.9rem, 6vw, 2.6rem);
+  }
+
+  .title-panel .lede {
+    font-size: 0.9rem;
+    margin-bottom: 0.85rem;
+  }
+
+  .controls-block {
+    margin-bottom: 0.7rem;
+    padding-top: 0.55rem;
   }
 }

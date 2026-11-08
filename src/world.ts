@@ -149,6 +149,14 @@ function makeTower(id: string, x: number, groundY: number, topHeight: number): T
   };
 }
 
+/**
+ * Uniform world→screen scale. Large stages zoom in so the world covers the view
+ * (no empty strips, no stretching); smaller stages stay at 1:1 as before.
+ */
+export function worldZoom(viewW: number, viewH: number, world: World): number {
+  return Math.max(1, viewW / world.width, viewH / world.height);
+}
+
 export function rectsOverlap(a: Rect, b: Rect): boolean {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }

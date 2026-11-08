@@ -9,6 +9,8 @@ export type ShopHit =
 export type ShopCardRect = { x: number; y: number; w: number; h: number };
 
 export type ShopLayout = {
+  /** Screen px per layout unit (≤ 1); rects below are in layout units */
+  scale: number;
   cx: number;
   panelW: number;
   panelH: number;
@@ -21,7 +23,14 @@ export type ShopLayout = {
   ready: ShopCardRect;
 };
 
-export function getShopLayout(viewW: number, viewH: number): ShopLayout {
+const DESIGN_W = 680;
+const DESIGN_H = 460;
+
+export function getShopLayout(screenW: number, screenH: number): ShopLayout {
+  // Fit the full panel (cards + Ready button) on short or narrow screens
+  const scale = Math.min(1, (screenW - 24) / DESIGN_W, (screenH - 24) / DESIGN_H);
+  const viewW = screenW / scale;
+  const viewH = screenH / scale;
   const cx = viewW / 2;
   const panelW = Math.min(680, viewW - 24);
   const panelH = Math.min(460, viewH - 24);
@@ -64,6 +73,7 @@ export function getShopLayout(viewW: number, viewH: number): ShopLayout {
   };
 
   return {
+    scale,
     cx,
     panelW,
     panelH,
@@ -83,9 +93,11 @@ function pointIn(r: ShopCardRect, x: number, y: number) {
 
 export function hitTestShop(
   layout: ShopLayout,
-  x: number,
-  y: number,
+  screenX: number,
+  screenY: number,
 ): ShopHit | null {
+  const x = screenX / layout.scale;
+  const y = screenY / layout.scale;
   for (const u of layout.upgrades) {
     if (pointIn(u.rect, x, y)) return { kind: "upgrade", id: u.id };
   }

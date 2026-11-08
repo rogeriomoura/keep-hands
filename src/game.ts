@@ -27,6 +27,7 @@ import {
   rectsOverlap,
   type Rect,
   type World,
+  worldZoom,
 } from "./world";
 import { render } from "./render";
 import {
@@ -51,6 +52,13 @@ export type Player = {
   carrying: CarryKind | null;
   interactCooldown: number;
   jumpLocked: boolean;
+  // Animation-only state (never read by physics)
+  walkPhase: number;
+  /** 0 idle → 1 full stride; eases so legs settle instead of snapping */
+  stride: number;
+  climbPhase: number;
+  /** 0..1 squash after a hard landing */
+  landSquash: number;
 };
 
 export type Enemy = {
@@ -167,6 +175,11 @@ export function createGame(canvas: HTMLCanvasElement) {
 
   resize();
   window.addEventListener("resize", resize);
+  // Layout can change without a window resize (header reflow, fullscreen transitions
+  // measured mid-animation) — track the stage itself so the buffer never stretches
+  if (canvas.parentElement && "ResizeObserver" in window) {
+    new ResizeObserver(resize).observe(canvas.parentElement);
+  }
 
   const canvasPoint = (e: PointerEvent) => {
     const rect = canvas.getBoundingClientRect();
@@ -266,6 +279,10 @@ function freshState(status: GameState["status"] = "menu"): GameState {
       carrying: null,
       interactCooldown: 0,
       jumpLocked: false,
+      walkPhase: 0,
+      stride: 0,
+      climbPhase: 0,
+      landSquash: 0,
     },
     enemies: [],
     projectiles: [],
@@ -592,14 +609,51 @@ function updatePlayer(state: GameState, keys: KeyState, dt: number) {
   p.x += p.vx * dt;
   collideAxes(state, p, "x", dt, down);
 
+  const wasOnGround = p.onGround;
+  const fallSpeed = p.vy;
   p.y += p.vy * dt;
   p.onGround = false;
   collideAxes(state, p, "y", dt, down);
+
+  animatePlayer(state, p, dt, wasOnGround, fallSpeed);
 
   p.x = clamp(p.x, 0, state.world.width - p.w);
   if (p.y > state.world.height) {
     p.y = state.world.groundY - p.h;
     p.vy = 0;
+  }
+}
+
+/** Purely cosmetic: advances walk/climb cycles and landing squash after physics ran. */
+function animatePlayer(
+  state: GameState,
+  p: Player,
+  dt: number,
+  wasOnGround: boolean,
+  fallSpeed: number,
+) {
+  const moving = (p.onGround || p.onLadder) && Math.abs(p.vx) > 1;
+  p.stride += ((moving ? 1 : 0) - p.stride) * Math.min(1, dt * 12);
+  if (moving) p.walkPhase += dt * Math.abs(p.vx) * 0.075;
+  if (p.onLadder && Math.abs(p.vy) > 1) p.climbPhase += dt * Math.abs(p.vy) * 0.07;
+
+  p.landSquash = Math.max(0, p.landSquash - dt * 5);
+  if (!wasOnGround && p.onGround && !p.onLadder && fallSpeed > 260) {
+    p.landSquash = Math.min(1, (fallSpeed - 160) / 420);
+    for (const dir of [-1, 1]) {
+      state.debris.push({
+        kind: "dust",
+        x: p.x + p.w / 2 + dir * 8,
+        y: p.y + p.h - 3,
+        vx: dir * (22 + Math.random() * 14),
+        vy: -6 - Math.random() * 6,
+        life: 0.4,
+        maxLife: 0.4,
+        size: 4 + p.landSquash * 3,
+        spin: 0,
+        color: "200, 186, 164",
+      });
+    }
   }
 }
 
@@ -1155,8 +1209,14 @@ function addFloater(
 }
 
 function updateCamera(state: GameState, canvas: HTMLCanvasElement) {
-  const viewW = canvas.clientWidth || canvas.width;
-  const viewH = canvas.clientHeight || canvas.height;
+  const zoom = worldZoom(
+    canvas.clientWidth || canvas.width,
+    canvas.clientHeight || canvas.height,
+    state.world,
+  );
+  // camera works in world units: the visible slice shrinks as we zoom in
+  const viewW = (canvas.clientWidth || canvas.width) / zoom;
+  const viewH = (canvas.clientHeight || canvas.height) / zoom;
   const targetX = state.player.x + state.player.w / 2 - viewW / 2;
   const targetY = state.player.y + state.player.h / 2 - viewH / 2 - 40;
   const maxX = Math.max(0, state.world.width - viewW);

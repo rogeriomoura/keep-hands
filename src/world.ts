@@ -149,12 +149,20 @@ function makeTower(id: string, x: number, groundY: number, topHeight: number): T
   };
 }
 
+/** Stages shorter than this (phones in landscape) zoom out to show more of the field. */
+const SHORT_STAGE = 520;
+
 /**
- * Uniform world→screen scale. Large stages zoom in so the world covers the view
- * (no empty strips, no stretching); smaller stages stay at 1:1 as before.
+ * Uniform world→screen scale.
+ * - Tall stages zoom in so the world covers the view (no empty strips).
+ * - Mid-size stages stay 1:1.
+ * - Short stages zoom out so ~520 world px fit vertically (both cannons + ground).
+ * Never below "cover", so the world always fills the stage.
  */
 export function worldZoom(viewW: number, viewH: number, world: World): number {
-  return Math.max(1, viewW / world.width, viewH / world.height);
+  const cover = Math.max(viewW / world.width, viewH / world.height);
+  if (viewH >= SHORT_STAGE) return Math.max(1, cover);
+  return Math.max(cover, viewH / SHORT_STAGE);
 }
 
 export function rectsOverlap(a: Rect, b: Rect): boolean {

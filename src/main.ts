@@ -2,8 +2,11 @@ import "./style.css";
 import { createGame } from "./game";
 import {
   bindTouchControls,
+  canFullscreen,
   enterImmersive,
+  exitFullscreen,
   isFullscreenActive,
+  isStandalone,
   isTouchPlayDevice,
 } from "./touch";
 
@@ -12,6 +15,9 @@ if (!app) throw new Error("#app missing");
 
 const touchPlay = isTouchPlayDevice();
 if (touchPlay) document.body.classList.add("touch-play");
+// Home Screen web app: no browser chrome to hide, but respect the notch/safe areas
+const standalone = isStandalone();
+if (standalone) document.body.classList.add("immersive", "standalone");
 
 app.innerHTML = `
   <header class="topbar">
@@ -34,11 +40,11 @@ app.innerHTML = `
 
     <div class="touch-ui" id="touch-ui" hidden>
       <div class="touch-dpad" aria-label="Movement">
-        <button type="button" class="touch-btn touch-pad" data-key="ArrowUp" aria-label="Up">▲</button>
-        <button type="button" class="touch-btn touch-pad" data-key="ArrowLeft" aria-label="Left">◀</button>
-        <button type="button" class="touch-btn touch-pad touch-pad-center" disabled tabindex="-1"></button>
-        <button type="button" class="touch-btn touch-pad" data-key="ArrowRight" aria-label="Right">▶</button>
-        <button type="button" class="touch-btn touch-pad" data-key="ArrowDown" aria-label="Down">▼</button>
+        <button type="button" class="touch-btn touch-pad pad-up" data-key="ArrowUp" aria-label="Up"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5.5 19.5 16.5h-15z"/></svg></button>
+        <button type="button" class="touch-btn touch-pad pad-left" data-key="ArrowLeft" aria-label="Left"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5.5 19.5 16.5h-15z"/></svg></button>
+        <span class="touch-pad-center" aria-hidden="true"></span>
+        <button type="button" class="touch-btn touch-pad pad-right" data-key="ArrowRight" aria-label="Right"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5.5 19.5 16.5h-15z"/></svg></button>
+        <button type="button" class="touch-btn touch-pad pad-down" data-key="ArrowDown" aria-label="Down"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5.5 19.5 16.5h-15z"/></svg></button>
       </div>
       <div class="touch-actions" aria-label="Actions">
         <button type="button" class="touch-btn touch-act" data-key="KeyZ">Act</button>
@@ -73,7 +79,7 @@ app.innerHTML = `
             First night is a clean shift: prep timer, then siege — no shop yet.
             After that: day shop → prep → night. Spend gold on upgrades and hired help between waves.
           </p>
-          <p class="landscape-note">Phones: landscape + on-screen controls. Start enters fullscreen when allowed.</p>
+          <p class="landscape-note">Phones: play in landscape with the on-screen controls. On iPhone, use Share → Add to Home Screen for fullscreen.</p>
         </div>
 
         <button type="button" id="start" class="start-btn">Start game</button>
@@ -85,6 +91,15 @@ app.innerHTML = `
         <h2 id="end-title">Keep fallen</h2>
         <p id="end-body">The raiders broke through.</p>
         <button type="button" id="restart">Try again</button>
+      </div>
+    </div>
+
+    <div class="overlay fs-help" id="fs-help" hidden>
+      <div class="panel">
+        <h2>Fullscreen on iPhone</h2>
+        <p>Safari on iPhone doesn't let web pages go fullscreen.</p>
+        <p>Tap <strong>Share</strong>, then <strong>Add to Home Screen</strong>, and open Keep Hands from your Home Screen. It launches fullscreen.</p>
+        <button type="button" id="fs-help-close">Got it</button>
       </div>
     </div>
 
@@ -127,17 +142,35 @@ if (touchPlay) {
   bindTouchControls(touchUi, (code, down) => game.setKey(code, down));
 }
 
+const fsHelp = document.querySelector<HTMLDivElement>("#fs-help")!;
+const fsHelpClose = document.querySelector<HTMLButtonElement>("#fs-help-close")!;
+
 function syncFullscreenClass() {
   document.body.classList.toggle("is-fullscreen", isFullscreenActive());
   if (isFullscreenActive()) document.body.classList.add("immersive");
   fsBtn.textContent = isFullscreenActive() ? "Exit FS" : "Fullscreen";
+  // Already chrome-free when launched from the Home Screen
+  fsBtn.hidden = standalone;
 }
 
 fsBtn.addEventListener("click", async (e) => {
   e.preventDefault();
   e.stopPropagation();
-  await enterImmersive(document.documentElement);
+  if (isFullscreenActive()) {
+    await exitFullscreen();
+  } else if (canFullscreen()) {
+    await enterImmersive(document.documentElement);
+  } else {
+    // iPhone Safari: the Fullscreen API isn't available to pages — explain the Home Screen route
+    fsHelp.hidden = false;
+    game.setUiPaused(true);
+  }
   syncFullscreenClass();
+});
+
+fsHelpClose.addEventListener("click", () => {
+  fsHelp.hidden = true;
+  game.setUiPaused(false);
 });
 
 let pendingStart = false;
@@ -157,6 +190,23 @@ function syncRotateGate() {
   return block;
 }
 
+let insetsShown: boolean | null = null;
+
+/** Tell the camera how much of each stage edge the touch controls cover. */
+function syncViewInsets(show: boolean) {
+  if (!show) {
+    game.setViewInsets({ left: 0, right: 0 });
+    return;
+  }
+  const stage = canvas!.getBoundingClientRect();
+  const pad = touchUi.querySelector(".touch-dpad")!.getBoundingClientRect();
+  const acts = touchUi.querySelector(".touch-actions")!.getBoundingClientRect();
+  game.setViewInsets({
+    left: pad.right - stage.left + 8,
+    right: stage.right - acts.left + 8,
+  });
+}
+
 function syncTouchUi() {
   if (!touchPlay) {
     touchUi.hidden = true;
@@ -170,6 +220,10 @@ function syncTouchUi() {
     Boolean(overlay.hidden);
   touchUi.hidden = !show;
   document.body.classList.toggle("touch-controls-on", show);
+  if (show !== insetsShown) {
+    insetsShown = show;
+    syncViewInsets(show);
+  }
 }
 
 function launchRun() {
@@ -217,6 +271,8 @@ window.addEventListener("orientationchange", () => {
 window.addEventListener("resize", () => {
   syncRotateGate();
   syncTouchUi();
+  // control sizes/positions change with the viewport — re-measure
+  if (insetsShown) syncViewInsets(true);
 });
 document.addEventListener("fullscreenchange", syncFullscreenClass);
 document.addEventListener("webkitfullscreenchange", syncFullscreenClass);

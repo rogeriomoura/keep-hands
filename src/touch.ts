@@ -48,6 +48,32 @@ type FullscreenDoc = Document & {
   webkitExitFullscreen?: () => Promise<void> | void;
 };
 
+/** True when the page can request element fullscreen (false on iPhone Safari). */
+export function canFullscreen(): boolean {
+  const doc = document as FullscreenDoc & { webkitFullscreenEnabled?: boolean };
+  return Boolean(document.fullscreenEnabled || doc.webkitFullscreenEnabled);
+}
+
+/** Launched from the Home Screen as a web app — already chrome-free. */
+export function isStandalone(): boolean {
+  const nav = navigator as Navigator & { standalone?: boolean };
+  return (
+    nav.standalone === true ||
+    window.matchMedia("(display-mode: standalone)").matches ||
+    window.matchMedia("(display-mode: fullscreen)").matches
+  );
+}
+
+export async function exitFullscreen() {
+  const doc = document as FullscreenDoc;
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else if (doc.webkitFullscreenElement) await Promise.resolve(doc.webkitExitFullscreen?.());
+  } catch {
+    /* already out */
+  }
+}
+
 export function isFullscreenActive(): boolean {
   const doc = document as FullscreenDoc;
   return Boolean(document.fullscreenElement || doc.webkitFullscreenElement);

@@ -162,6 +162,9 @@ export function createGame(canvas: HTMLCanvasElement) {
   let last = performance.now();
   let raf = 0;
   let pausedForOrientation = false;
+  let pausedForUi = false;
+  /** Screen px covered by on-screen controls; the camera may scroll past the world edge by this much */
+  const insets = { left: 0, right: 0 };
 
   const resize = () => {
     const rect = canvas.parentElement?.getBoundingClientRect();
@@ -221,8 +224,8 @@ export function createGame(canvas: HTMLCanvasElement) {
   const frame = (now: number) => {
     const dt = Math.min(0.033, (now - last) / 1000);
     last = now;
-    if (state.status === "playing" && !pausedForOrientation) {
-      update(state, input.keys, dt, canvas);
+    if (state.status === "playing" && !pausedForOrientation && !pausedForUi) {
+      update(state, input.keys, dt, canvas, insets);
     } else {
       state.bannerLife = Math.max(0, state.bannerLife - dt);
       updateFloaters(state, dt);
@@ -244,6 +247,16 @@ export function createGame(canvas: HTMLCanvasElement) {
     restart() {
       state = freshState("playing");
       pausedForOrientation = false;
+      input.clearKeys();
+    },
+    /** CSS px of the stage covered by touch controls (0 when hidden) */
+    setViewInsets(next: ViewInsets) {
+      insets.left = Math.max(0, next.left);
+      insets.right = Math.max(0, next.right);
+    },
+    /** Freeze the world while a DOM dialog (e.g. fullscreen help) is open */
+    setUiPaused(paused: boolean) {
+      pausedForUi = paused;
       input.clearKeys();
     },
     setOrientationPaused(paused: boolean) {
@@ -315,7 +328,13 @@ function freshState(status: GameState["status"] = "menu"): GameState {
   };
 }
 
-function update(state: GameState, keys: KeyState, dt: number, canvas: HTMLCanvasElement) {
+function update(
+  state: GameState,
+  keys: KeyState,
+  dt: number,
+  canvas: HTMLCanvasElement,
+  insets: ViewInsets,
+) {
   state.elapsed += dt;
   state.player.interactCooldown = Math.max(0, state.player.interactCooldown - dt);
   state.shopCooldown = Math.max(0, state.shopCooldown - dt);
@@ -339,7 +358,7 @@ function update(state: GameState, keys: KeyState, dt: number, canvas: HTMLCanvas
 
   updateFloaters(state, dt);
   updateDebris(state, dt);
-  updateCamera(state, canvas);
+  updateCamera(state, canvas, insets);
 
   if (state.lives <= 0) {
     state.status = "lost";
@@ -1208,7 +1227,9 @@ function addFloater(
   });
 }
 
-function updateCamera(state: GameState, canvas: HTMLCanvasElement) {
+type ViewInsets = { left: number; right: number };
+
+function updateCamera(state: GameState, canvas: HTMLCanvasElement, insets: ViewInsets) {
   const zoom = worldZoom(
     canvas.clientWidth || canvas.width,
     canvas.clientHeight || canvas.height,
@@ -1219,9 +1240,12 @@ function updateCamera(state: GameState, canvas: HTMLCanvasElement) {
   const viewH = (canvas.clientHeight || canvas.height) / zoom;
   const targetX = state.player.x + state.player.w / 2 - viewW / 2;
   const targetY = state.player.y + state.player.h / 2 - viewH / 2 - 40;
-  const maxX = Math.max(0, state.world.width - viewW);
+  // Touch controls cover the stage edges: let the camera scroll past the world edge
+  // far enough that the crate / far wall sit beside the buttons, not under them
+  const minX = -insets.left / zoom;
+  const maxX = Math.max(minX, state.world.width - viewW + insets.right / zoom);
   const maxY = Math.max(0, state.world.height - viewH);
-  const tx = clamp(targetX, 0, maxX);
+  const tx = clamp(targetX, minX, maxX);
   const ty = clamp(targetY, 0, maxY);
   // soft follow
   state.camera.x += (tx - state.camera.x) * Math.min(1, 0.12);

@@ -18,6 +18,8 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState) {
 
   ctx.save();
   const zoom = worldZoom(viewW, viewH, world);
+  // when zoomed out, world-space labels grow back so they stay readable
+  textBoost = 1 / Math.min(1, zoom);
   ctx.scale(zoom, zoom);
   ctx.translate(-camera.x + shakeX, -camera.y + shakeY);
 
@@ -37,8 +39,28 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.restore();
 
   drawDayTimer(ctx, state, viewW, viewH);
-  drawBanner(ctx, state, viewW);
+  drawBanner(ctx, state, viewW, viewH);
 }
+
+/** Scale for world-space text (labels, prompts, floaters); > 1 when the view is zoomed out */
+let textBoost = 1;
+
+/** Run `draw` in a local frame at (x, y) scaled by textBoost, so text keeps its on-screen size. */
+function withTextBoost(ctx: CanvasRenderingContext2D, x: number, y: number, draw: () => void) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(textBoost, textBoost);
+  draw();
+  ctx.restore();
+}
+
+/** Screen-space overlays (prep clock, banner) shrink on short stages so they don't hide the towers */
+function overlayScale(viewH: number) {
+  return Math.max(0.62, Math.min(1, viewH / 560));
+}
+
+/** How far past the world edges to paint sky/ground (camera can scroll there on touch) */
+const EDGE_BLEED = 1200;
 
 function drawBackdrop(
   ctx: CanvasRenderingContext2D,
@@ -57,7 +79,7 @@ function drawBackdrop(
     g.addColorStop(1, "#4a5a52");
   }
   ctx.fillStyle = g;
-  ctx.fillRect(0, 0, w, h);
+  ctx.fillRect(-EDGE_BLEED, 0, w + EDGE_BLEED * 2, h);
 
   ctx.fillStyle = isDay ? "rgba(255, 220, 140, 0.55)" : "rgba(232, 220, 200, 0.12)";
   ctx.beginPath();
@@ -77,13 +99,15 @@ function drawBackdrop(
 }
 
 function drawGround(ctx: CanvasRenderingContext2D, world: GameState["world"]) {
+  const x0 = -EDGE_BLEED;
+  const span = world.width + EDGE_BLEED * 2;
   ctx.fillStyle = "#3d5a45";
-  ctx.fillRect(0, world.groundY, world.width, world.height - world.groundY);
+  ctx.fillRect(x0, world.groundY, span, world.height - world.groundY);
   ctx.fillStyle = "#2f4636";
-  ctx.fillRect(0, world.groundY, world.width, 8);
+  ctx.fillRect(x0, world.groundY, span, 8);
 
   ctx.fillStyle = "#5a5044";
-  ctx.fillRect(0, world.groundY, world.gateX, 10);
+  ctx.fillRect(x0, world.groundY, world.gateX - x0, 10);
 }
 
 /** 0 intact → 4 critical; ruined is handled separately */
@@ -277,13 +301,11 @@ function drawTowers(ctx: CanvasRenderingContext2D, state: GameState) {
       "#c45c2a",
     );
 
-    ctx.fillStyle = empty ? "#e8a050" : "#e8dcc8";
-    ctx.font = "600 11px IBM Plex Sans, sans-serif";
-    ctx.fillText(
-      empty ? "NEED AMMO" : `${tower.ammo}/${tower.maxAmmo}`,
-      tower.platform.x + 10,
-      tower.platform.y - 62,
-    );
+    withTextBoost(ctx, tower.platform.x + 10, tower.platform.y - 54, () => {
+      ctx.fillStyle = empty ? "#e8a050" : "#e8dcc8";
+      ctx.font = "600 11px IBM Plex Sans, sans-serif";
+      ctx.fillText(empty ? "NEED AMMO" : `${tower.ammo}/${tower.maxAmmo}`, 0, -8);
+    });
   }
 }
 
@@ -465,9 +487,11 @@ function drawSupplies(ctx: CanvasRenderingContext2D, state: GameState) {
       ctx.fillRect(s.body.x, s.body.y, s.body.w, s.body.h);
       ctx.fillStyle = "#c4a060";
       ctx.fillRect(s.body.x + 6, s.body.y + 8, s.body.w - 12, 8);
-      ctx.fillStyle = "#e8dcc8";
-      ctx.font = "600 11px IBM Plex Sans, sans-serif";
-      ctx.fillText("AMMO", s.body.x + 4, s.body.y - 6);
+      withTextBoost(ctx, s.body.x + 4, s.body.y - 6, () => {
+        ctx.fillStyle = "#e8dcc8";
+        ctx.font = "600 11px IBM Plex Sans, sans-serif";
+        ctx.fillText("AMMO", 0, 0);
+      });
     } else {
       ctx.fillStyle = "#7a7468";
       ctx.beginPath();
@@ -476,9 +500,11 @@ function drawSupplies(ctx: CanvasRenderingContext2D, state: GameState) {
       ctx.lineTo(s.body.x + s.body.w - 8, s.body.y + 6);
       ctx.lineTo(s.body.x + s.body.w, s.body.y + s.body.h);
       ctx.fill();
-      ctx.fillStyle = "#e8dcc8";
-      ctx.font = "600 11px IBM Plex Sans, sans-serif";
-      ctx.fillText("STONE", s.body.x + 2, s.body.y - 6);
+      withTextBoost(ctx, s.body.x + 2, s.body.y - 6, () => {
+        ctx.fillStyle = "#e8dcc8";
+        ctx.font = "600 11px IBM Plex Sans, sans-serif";
+        ctx.fillText("STONE", 0, 0);
+      });
     }
   }
 }
@@ -894,11 +920,13 @@ function drawFloaters(ctx: CanvasRenderingContext2D, state: GameState) {
   for (const f of state.floaters) {
     const a = Math.max(0, f.life / f.maxLife);
     ctx.globalAlpha = a;
-    ctx.fillStyle = f.color;
-    ctx.font = "700 13px IBM Plex Sans, sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText(f.text, f.x, f.y);
-    ctx.textAlign = "left";
+    withTextBoost(ctx, f.x, f.y, () => {
+      ctx.fillStyle = f.color;
+      ctx.font = "700 13px IBM Plex Sans, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(f.text, 0, 0);
+      ctx.textAlign = "left";
+    });
     ctx.globalAlpha = 1;
   }
 }
@@ -906,15 +934,16 @@ function drawFloaters(ctx: CanvasRenderingContext2D, state: GameState) {
 function drawPrompt(ctx: CanvasRenderingContext2D, state: GameState) {
   if (!state.prompt) return;
   const p = state.player;
-  ctx.fillStyle = "rgba(20, 16, 12, 0.82)";
   const text = state.prompt;
-  ctx.font = "600 13px IBM Plex Sans, sans-serif";
-  const w = ctx.measureText(text).width + 16;
-  const x = p.x + p.w / 2 - w / 2;
-  const y = p.y - 36;
-  ctx.fillRect(x, y, w, 24);
-  ctx.fillStyle = "#f0e6d4";
-  ctx.fillText(text, x + 8, y + 16);
+  // anchored just above the head; the box grows upward when text is boosted
+  withTextBoost(ctx, p.x + p.w / 2, p.y - 12, () => {
+    ctx.font = "600 13px IBM Plex Sans, sans-serif";
+    const w = ctx.measureText(text).width + 16;
+    ctx.fillStyle = "rgba(20, 16, 12, 0.82)";
+    ctx.fillRect(-w / 2, -24, w, 24);
+    ctx.fillStyle = "#f0e6d4";
+    ctx.fillText(text, -w / 2 + 8, -8);
+  });
 }
 
 function drawDayTimer(
@@ -1126,15 +1155,17 @@ function drawHelpers(ctx: CanvasRenderingContext2D, state: GameState) {
     else drawHelperSide(ctx, h, HELPER_LOOKS[h.role], state.elapsed);
     ctx.restore();
 
-    ctx.fillStyle = "rgba(20, 16, 12, 0.75)";
     const label = h.label;
-    ctx.font = "600 10px IBM Plex Sans, sans-serif";
-    const tw = ctx.measureText(label).width + 8;
-    ctx.fillRect(h.x + h.w / 2 - tw / 2, h.y - 16, tw, 14);
-    ctx.fillStyle = "#e8dcc8";
-    ctx.textAlign = "center";
-    ctx.fillText(label, h.x + h.w / 2, h.y - 5);
-    ctx.textAlign = "left";
+    withTextBoost(ctx, h.x + h.w / 2, h.y - 2, () => {
+      ctx.font = "600 10px IBM Plex Sans, sans-serif";
+      const tw = ctx.measureText(label).width + 8;
+      ctx.fillStyle = "rgba(20, 16, 12, 0.75)";
+      ctx.fillRect(-tw / 2, -14, tw, 14);
+      ctx.fillStyle = "#e8dcc8";
+      ctx.textAlign = "center";
+      ctx.fillText(label, 0, -3);
+      ctx.textAlign = "left";
+    });
   }
 }
 
@@ -1320,10 +1351,41 @@ function drawPrepPhase(
   const progress = state.dayDuration > 0 ? secs / state.dayDuration : 0;
   const urgent = secs <= 5;
 
-  const cx = viewW / 2;
-  const cy = viewH * 0.2;
+  // draw in a scaled frame centred at the top so the clock shrinks on short stages
+  const k = overlayScale(viewH);
+  const cx = 0;
+  const cy = Math.max(110, (viewH * 0.2) / k);
 
   ctx.save();
+  ctx.translate(viewW / 2, 0);
+  ctx.scale(k, k);
+
+  if (k < 0.8) {
+    // short stage (phone): slim one-panel clock that stays above the tower tops
+    const top = 56;
+    ctx.fillStyle = "rgba(18, 14, 10, 0.62)";
+    roundRect(ctx, -160, top, 320, 64, 10);
+    ctx.fill();
+    ctx.strokeStyle = urgent ? "rgba(196, 92, 42, 0.85)" : "rgba(232, 220, 200, 0.35)";
+    ctx.lineWidth = 2;
+    roundRect(ctx, -160, top, 320, 64, 10);
+    ctx.stroke();
+    ctx.fillStyle = "#a89880";
+    ctx.font = "600 13px IBM Plex Sans, sans-serif";
+    ctx.fillText("PREP — REPAIR & RELOAD", -142, top + 24);
+    ctx.fillStyle = "rgba(20, 16, 12, 0.7)";
+    ctx.fillRect(-142, top + 36, 200, 8);
+    ctx.fillStyle = urgent ? "#c45c2a" : "#d8b45a";
+    ctx.fillRect(-142, top + 36, 200 * progress, 8);
+    ctx.fillStyle = urgent ? "#e8a050" : "#f0e6d4";
+    ctx.font = "700 44px Cormorant Garamond, serif";
+    ctx.textAlign = "center";
+    ctx.fillText(String(whole), 108, top + 48);
+    ctx.textAlign = "left";
+    ctx.restore();
+    return;
+  }
+
   ctx.fillStyle = "rgba(18, 14, 10, 0.58)";
   roundRect(ctx, cx - 180, cy - 58, 360, 110, 10);
   ctx.fill();
@@ -1358,20 +1420,27 @@ function drawPrepPhase(
   ctx.restore();
 }
 
-function drawBanner(ctx: CanvasRenderingContext2D, state: GameState, viewW: number) {
+function drawBanner(
+  ctx: CanvasRenderingContext2D,
+  state: GameState,
+  viewW: number,
+  viewH: number,
+) {
   if (state.bannerLife <= 0 || !state.banner) return;
 
   const a = Math.min(1, state.bannerLife);
   const y = state.betweenWaves ? 16 : 28;
   ctx.save();
   ctx.globalAlpha = a;
+  ctx.translate(viewW / 2, 0);
+  ctx.scale(overlayScale(viewH), overlayScale(viewH));
   ctx.fillStyle = "rgba(18, 14, 10, 0.7)";
-  roundRect(ctx, viewW / 2 - 200, y, 400, 36, 8);
+  roundRect(ctx, -200, y, 400, 36, 8);
   ctx.fill();
   ctx.fillStyle = "#f0e6d4";
   ctx.font = "600 16px Cormorant Garamond, serif";
   ctx.textAlign = "center";
-  ctx.fillText(state.banner, viewW / 2, y + 24);
+  ctx.fillText(state.banner, 0, y + 24);
   ctx.textAlign = "left";
   ctx.restore();
 }

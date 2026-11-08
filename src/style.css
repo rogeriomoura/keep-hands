@@ -432,36 +432,97 @@ body.is-fullscreen .topbar {
 .touch-dpad {
   pointer-events: auto;
   display: grid;
-  grid-template-columns: repeat(3, 3.35rem);
-  grid-template-rows: repeat(3, 3.35rem);
-  gap: 0.32rem;
+  /* 44px arms: smallest comfortable touch target; arms + hub read as one cross */
+  grid-template-columns: repeat(3, 2.75rem);
+  grid-template-rows: repeat(3, 2.75rem);
+  gap: 0;
+  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.45));
   margin-bottom: 0.1rem;
 }
 
-.touch-dpad .touch-pad:nth-child(1) { grid-column: 2; grid-row: 1; }
-.touch-dpad .touch-pad:nth-child(2) { grid-column: 1; grid-row: 2; }
-.touch-dpad .touch-pad-center { grid-column: 2; grid-row: 2; opacity: 0; pointer-events: none; }
-.touch-dpad .touch-pad:nth-child(4) { grid-column: 3; grid-row: 2; }
-.touch-dpad .touch-pad:nth-child(5) { grid-column: 2; grid-row: 3; }
+.touch-dpad .pad-up { grid-column: 2; grid-row: 1; }
+.touch-dpad .pad-left { grid-column: 1; grid-row: 2; }
+.touch-dpad .touch-pad-center { grid-column: 2; grid-row: 2; }
+.touch-dpad .pad-right { grid-column: 3; grid-row: 2; }
+.touch-dpad .pad-down { grid-column: 2; grid-row: 3; }
 
+/* Cross-shaped pad: each arm keeps only its outer border and rounded outer end */
+.touch-dpad .touch-pad {
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  background: rgba(24, 19, 14, 0.78);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: #e8dcc8;
+}
+
+.touch-dpad .pad-up { border-radius: 0.75rem 0.75rem 0 0; border-bottom: 0; }
+.touch-dpad .pad-down { border-radius: 0 0 0.75rem 0.75rem; border-top: 0; }
+.touch-dpad .pad-left { border-radius: 0.75rem 0 0 0.75rem; border-right: 0; }
+.touch-dpad .pad-right { border-radius: 0 0.75rem 0.75rem 0; border-left: 0; }
+
+.touch-dpad .touch-pad svg {
+  width: 1.3rem;
+  height: 1.3rem;
+  fill: currentColor;
+  stroke: currentColor;
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.touch-dpad .pad-right svg { transform: rotate(90deg); }
+.touch-dpad .pad-down svg { transform: rotate(180deg); }
+.touch-dpad .pad-left svg { transform: rotate(-90deg); }
+
+/* hub: fills the middle of the cross with a shallow thumb dimple */
+.touch-dpad .touch-pad-center {
+  pointer-events: none;
+  background:
+    radial-gradient(circle, rgba(0, 0, 0, 0.35) 0 32%, rgba(232, 200, 140, 0.12) 34% 40%, transparent 42%),
+    rgba(24, 19, 14, 0.78);
+}
+
+/* pressed arm lights up in place (no scale, so the cross stays joined) */
+.touch-dpad .touch-pad.is-down,
+.touch-dpad .touch-pad:active {
+  transform: none;
+  background: rgba(196, 92, 42, 0.9);
+  color: #fff6e8;
+}
+
+/* Two short rows instead of a tall column: Drop on top, Jump + big Act in the corner */
 .touch-actions {
   pointer-events: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  align-items: flex-end;
+  display: grid;
+  grid-template-areas:
+    ".    drop"
+    "jump act";
+  gap: 0.4rem;
+  align-items: end;
+  justify-items: end;
   margin-bottom: 0.1rem;
 }
+
+.touch-actions .touch-act { grid-area: act; }
+.touch-actions .touch-jump { grid-area: jump; }
+.touch-actions .touch-drop { grid-area: drop; }
 
 .touch-btn {
   appearance: none;
   border: 2px solid rgba(232, 200, 140, 0.55);
-  background: rgba(18, 14, 10, 0.82);
+  background: rgba(18, 14, 10, 0.62);
   color: #f0e6d4;
-  font: 700 0.9rem "IBM Plex Sans", sans-serif;
-  min-width: 3.35rem;
-  min-height: 3.35rem;
-  border-radius: 0.9rem;
+  font: 700 0.85rem "IBM Plex Sans", sans-serif;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  border-radius: 0.8rem;
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   touch-action: none;
@@ -479,15 +540,22 @@ body.is-fullscreen .topbar {
 }
 
 .touch-act {
-  min-width: 4.6rem;
-  min-height: 4.6rem;
-  font-size: 1.05rem;
+  min-width: 4.1rem;
+  min-height: 4.1rem;
+  font-size: 1rem;
   background: rgba(160, 88, 36, 0.9);
   border-color: rgba(232, 180, 90, 0.75);
 }
 
 .touch-jump {
-  min-width: 4.25rem;
+  min-width: 3.4rem;
+  min-height: 3.4rem;
+}
+
+.touch-drop {
+  min-width: 4.1rem;
+  min-height: 2.5rem;
+  font-size: 0.75rem;
 }
 
 .fs-btn {
@@ -537,4 +605,27 @@ body.immersive:not(.is-fullscreen) #app {
     margin-bottom: 0.7rem;
     padding-top: 0.55rem;
   }
+}
+
+/* —— Fullscreen help (iPhone Safari has no page fullscreen) —— */
+.fs-btn[hidden] {
+  display: none !important;
+}
+
+.fs-help {
+  z-index: 20;
+}
+
+.fs-help .panel {
+  max-width: 24rem;
+  padding: 1.1rem 1.4rem 1.25rem;
+}
+
+.fs-help .panel h2 {
+  font-size: 1.5rem;
+}
+
+.fs-help .panel p {
+  margin-bottom: 0.7rem;
+  font-size: 0.9rem;
 }

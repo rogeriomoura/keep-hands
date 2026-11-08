@@ -199,13 +199,81 @@ function drawSupplies(ctx: CanvasRenderingContext2D, state: GameState) {
 
 function drawEnemies(ctx: CanvasRenderingContext2D, state: GameState) {
   for (const e of state.enemies) {
-    ctx.fillStyle = e.kind === "brute" ? "#5a2a28" : "#3a4a38";
-    ctx.fillRect(e.x, e.y, e.w, e.h);
+    const brute = e.kind === "brute";
+    const body = brute ? "#5a2a28" : "#3a4a38";
+    const shade = brute ? "#3a1814" : "#243028";
+    const skin = brute ? "#8a5a48" : "#6a7a68";
+    const raise = Math.max(0, Math.min(1, e.armRaise));
+
+    // legs
+    const walk = e.attacking ? 0 : Math.sin(e.walkPhase) * 3;
+    ctx.fillStyle = shade;
+    ctx.fillRect(e.x + 3, e.y + e.h - 12, 6, 12);
+    ctx.fillRect(e.x + e.w - 9, e.y + e.h - 12 + walk, 6, 12 - Math.abs(walk) * 0.2);
+
+    // torso
+    ctx.fillStyle = body;
+    ctx.fillRect(e.x + 3, e.y + 10, e.w - 6, e.h - 20);
+
+    // head
+    ctx.fillStyle = skin;
+    const headW = brute ? 14 : 11;
+    ctx.fillRect(e.x + (e.w - headW) / 2, e.y + 1, headW, 11);
     ctx.fillStyle = "#1a1612";
-    ctx.fillRect(e.x + 4, e.y + 6, 6, 5);
+    ctx.fillRect(e.x + 4, e.y + 5, 4, 3);
+
+    // arms — face left toward the keep; raise pivots from hang → overhead
+    const shoulderY = e.y + 13;
+    const armLen = brute ? 16 : 13;
+    const armW = brute ? 5 : 4;
+    // hang (~0.5 rad forward/down) → raised up (~-2.1 rad)
+    const angle = 0.55 - raise * 2.55;
+
+    drawEnemyArm(ctx, e.x + 5, shoulderY, angle, armLen, armW, shade, skin);
+    drawEnemyArm(
+      ctx,
+      e.x + e.w - 5,
+      shoulderY + 1,
+      angle + 0.18,
+      armLen - 1,
+      armW,
+      shade,
+      skin,
+    );
+
+    // crude club/weapon on lead arm when attacking hard
+    if (raise > 0.35) {
+      ctx.save();
+      ctx.translate(e.x + 5, shoulderY);
+      ctx.rotate(angle);
+      ctx.fillStyle = "#4a3a28";
+      ctx.fillRect(-2, armLen - 2, 4, 10);
+      ctx.restore();
+    }
+
     ctx.fillStyle = "#c45c2a";
     ctx.fillRect(e.x + 4, e.y - 8, (e.w - 8) * (e.hp / e.maxHp), 4);
   }
+}
+
+function drawEnemyArm(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  angle: number,
+  len: number,
+  width: number,
+  sleeve: string,
+  hand: string,
+) {
+  ctx.save();
+  ctx.translate(sx, sy);
+  ctx.rotate(angle);
+  ctx.fillStyle = sleeve;
+  ctx.fillRect(-width / 2, 0, width, len - 3);
+  ctx.fillStyle = hand;
+  ctx.fillRect(-width / 2 - 0.5, len - 4, width + 1, 5);
+  ctx.restore();
 }
 
 function drawProjectiles(ctx: CanvasRenderingContext2D, state: GameState) {

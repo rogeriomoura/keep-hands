@@ -57,7 +57,12 @@ export type Enemy = {
   maxHp: number;
   speed: number;
   attackTimer: number;
+  attackCooldown: number;
+  attacking: boolean;
+  /** 0 = arms down, 1 = arms raised to strike */
+  armRaise: number;
   damage: number;
+  walkPhase: number;
 };
 
 export type Projectile = {
@@ -331,7 +336,11 @@ function spawnEnemy(state: GameState) {
     maxHp: brute ? 78 : 28 + state.wave * 2,
     speed: brute ? 40 : 68 + state.wave * 5,
     attackTimer: 0,
+    attackCooldown: 1,
+    attacking: false,
+    armRaise: 0,
     damage: brute ? 14 : 8,
+    walkPhase: Math.random() * Math.PI * 2,
   });
 }
 
@@ -643,12 +652,22 @@ function updateEnemies(state: GameState, dt: number) {
 
     if (e.x > target.edge + 2) {
       e.x -= e.speed * dt;
+      e.attacking = false;
       e.attackTimer = 0.35;
+      e.walkPhase += dt * (e.speed * 0.08);
+      // light arm sway while marching
+      e.armRaise += (0.12 + Math.sin(e.walkPhase) * 0.08 - e.armRaise) * Math.min(1, dt * 10);
     } else {
+      e.attacking = true;
       e.attackTimer -= dt;
+      // wind-up: arms climb as the swing charges
+      const windup = 1 - Math.max(0, e.attackTimer) / e.attackCooldown;
+      e.armRaise += (windup - e.armRaise) * Math.min(1, dt * 14);
       if (e.attackTimer <= 0) {
         damageStructure(state, target.id, e.damage);
-        e.attackTimer = 1.0;
+        e.attackCooldown = 1.0;
+        e.attackTimer = e.attackCooldown;
+        e.armRaise = 1;
       }
     }
   }

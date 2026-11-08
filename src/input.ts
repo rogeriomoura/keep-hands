@@ -9,7 +9,12 @@ export function createInput() {
       e.code === "Space" ||
       e.code.startsWith("Arrow") ||
       e.code === "KeyZ" ||
-      e.code === "KeyX"
+      e.code === "KeyX" ||
+      e.code === "Digit1" ||
+      e.code === "Digit2" ||
+      e.code === "Digit3" ||
+      e.code === "Digit4" ||
+      e.code === "Enter"
     ) {
       e.preventDefault();
     }

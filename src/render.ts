@@ -1,4 +1,5 @@
 import type { GameState } from "./game";
+import { UPGRADE_DEFS, canBuy, upgradeCost } from "./upgrades";
 
 export function render(ctx: CanvasRenderingContext2D, state: GameState) {
   const { world, camera } = state;
@@ -273,49 +274,150 @@ function drawDayTimer(
   if (!state.betweenWaves || state.status !== "playing") return;
   if (state.wave > 5) return;
 
+  if (state.dayPhase === "shop") {
+    drawShopPhase(ctx, state, viewW, viewH);
+    return;
+  }
+
+  drawPrepPhase(ctx, state, viewW, viewH);
+}
+
+function drawShopPhase(
+  ctx: CanvasRenderingContext2D,
+  state: GameState,
+  viewW: number,
+  viewH: number,
+) {
+  const cx = viewW / 2;
+  const cy = viewH * 0.42;
+
+  ctx.save();
+  // Dim the keep while paused
+  ctx.fillStyle = "rgba(12, 10, 8, 0.45)";
+  ctx.fillRect(0, 0, viewW, viewH);
+
+  ctx.fillStyle = "rgba(18, 14, 10, 0.88)";
+  roundRect(ctx, cx - 320, cy - 160, 640, 320, 12);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(232, 220, 200, 0.4)";
+  ctx.lineWidth = 2;
+  roundRect(ctx, cx - 320, cy - 160, 640, 320, 12);
+  ctx.stroke();
+
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#f0e6d4";
+  ctx.font = "700 28px Cormorant Garamond, serif";
+  ctx.fillText("Quartermaster", cx, cy - 120);
+
+  ctx.fillStyle = "#a89880";
+  ctx.font = "500 13px IBM Plex Sans, sans-serif";
+  ctx.fillText(
+    `Paused · Night ${state.wave} waiting · Gold ${state.gold}`,
+    cx,
+    cy - 94,
+  );
+  ctx.fillText("Read the stock, spend what you need — no rush", cx, cy - 74);
+
+  const slotW = 140;
+  const startX = cx - (UPGRADE_DEFS.length * slotW) / 2;
+  UPGRADE_DEFS.forEach((def, i) => {
+    const level = state.upgrades[def.id];
+    const maxed = level >= def.maxLevel;
+    const cost = maxed ? 0 : upgradeCost(def.id, level);
+    const affordable = canBuy(def.id, state.upgrades, state.gold);
+    const x = startX + i * slotW + 8;
+    const y = cy - 48;
+
+    ctx.fillStyle = affordable
+      ? "rgba(60, 48, 32, 0.9)"
+      : "rgba(36, 30, 24, 0.9)";
+    roundRect(ctx, x, y, slotW - 16, 130, 8);
+    ctx.fill();
+    ctx.strokeStyle = maxed
+      ? "rgba(106, 143, 106, 0.7)"
+      : affordable
+        ? "rgba(216, 180, 90, 0.55)"
+        : "rgba(90, 78, 64, 0.5)";
+    ctx.stroke();
+
+    ctx.fillStyle = "#d8b45a";
+    ctx.font = "700 18px Cormorant Garamond, serif";
+    ctx.fillText(def.key, x + (slotW - 16) / 2, y + 28);
+
+    ctx.fillStyle = "#f0e6d4";
+    ctx.font = "700 14px IBM Plex Sans, sans-serif";
+    ctx.fillText(def.name, x + (slotW - 16) / 2, y + 52);
+
+    ctx.fillStyle = "#a89880";
+    ctx.font = "500 12px IBM Plex Sans, sans-serif";
+    ctx.fillText(def.blurb, x + (slotW - 16) / 2, y + 74);
+    ctx.fillText(
+      maxed ? `MAX · Lv ${level}` : `Lv ${level} → ${level + 1}`,
+      x + (slotW - 16) / 2,
+      y + 96,
+    );
+
+    ctx.fillStyle = maxed ? "#6a8f6a" : affordable ? "#e8dcc8" : "#7a6e60";
+    ctx.font = "700 13px IBM Plex Sans, sans-serif";
+    ctx.fillText(
+      maxed ? "Owned" : `${cost} gold`,
+      x + (slotW - 16) / 2,
+      y + 118,
+    );
+  });
+
+  ctx.fillStyle = "#e8dcc8";
+  ctx.font = "600 14px IBM Plex Sans, sans-serif";
+  ctx.fillText("Press Enter when ready — then 15s to repair & reload", cx, cy + 130);
+
+  ctx.textAlign = "left";
+  ctx.restore();
+}
+
+function drawPrepPhase(
+  ctx: CanvasRenderingContext2D,
+  state: GameState,
+  viewW: number,
+  viewH: number,
+) {
   const secs = Math.max(0, state.waveTimer);
   const whole = Math.ceil(secs);
   const progress = state.dayDuration > 0 ? secs / state.dayDuration : 0;
   const urgent = secs <= 5;
 
   const cx = viewW / 2;
-  const cy = viewH * 0.28;
+  const cy = viewH * 0.2;
 
   ctx.save();
-  ctx.fillStyle = "rgba(18, 14, 10, 0.55)";
-  roundRect(ctx, cx - 150, cy - 78, 300, 150, 10);
+  ctx.fillStyle = "rgba(18, 14, 10, 0.58)";
+  roundRect(ctx, cx - 180, cy - 58, 360, 110, 10);
   ctx.fill();
 
   ctx.strokeStyle = urgent ? "rgba(196, 92, 42, 0.85)" : "rgba(232, 220, 200, 0.35)";
   ctx.lineWidth = 2;
-  roundRect(ctx, cx - 150, cy - 78, 300, 150, 10);
+  roundRect(ctx, cx - 180, cy - 58, 360, 110, 10);
   ctx.stroke();
 
+  ctx.textAlign = "center";
   ctx.fillStyle = "#a89880";
   ctx.font = "600 12px IBM Plex Sans, sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText(
-    state.wave === 1 ? "DAYLIGHT — PREPARE THE KEEP" : "DAYBREAK — REPAIR & RELOAD",
-    cx,
-    cy - 48,
-  );
+  ctx.fillText("PREP — REPAIR & RELOAD", cx, cy - 32);
 
   ctx.fillStyle = urgent ? "#e8a050" : "#f0e6d4";
-  ctx.font = "700 64px Cormorant Garamond, serif";
+  ctx.font = "700 48px Cormorant Garamond, serif";
   ctx.fillText(String(whole), cx, cy + 18);
 
   ctx.fillStyle = "#cbb89a";
-  ctx.font = "500 13px IBM Plex Sans, sans-serif";
-  ctx.fillText(`Night ${state.wave} begins soon`, cx, cy + 48);
+  ctx.font = "500 12px IBM Plex Sans, sans-serif";
+  ctx.fillText(`Night ${state.wave} begins when the clock hits zero`, cx, cy + 38);
 
-  // progress bar
-  const barW = 220;
+  const barW = 240;
   const barX = cx - barW / 2;
-  const barY = cy + 62;
+  const barY = cy + 48;
   ctx.fillStyle = "rgba(20, 16, 12, 0.7)";
-  ctx.fillRect(barX, barY, barW, 8);
+  ctx.fillRect(barX, barY, barW, 7);
   ctx.fillStyle = urgent ? "#c45c2a" : "#d8b45a";
-  ctx.fillRect(barX, barY, barW * progress, 8);
+  ctx.fillRect(barX, barY, barW * progress, 7);
 
   ctx.textAlign = "left";
   ctx.restore();
@@ -323,20 +425,18 @@ function drawDayTimer(
 
 function drawBanner(ctx: CanvasRenderingContext2D, state: GameState, viewW: number) {
   if (state.bannerLife <= 0 || !state.banner) return;
-  // hide brief banners while the day timer is the focus, except night-start
-  if (state.betweenWaves && state.status === "playing") return;
 
   const a = Math.min(1, state.bannerLife);
+  const y = state.betweenWaves ? 16 : 28;
   ctx.save();
   ctx.globalAlpha = a;
   ctx.fillStyle = "rgba(18, 14, 10, 0.7)";
-  const y = 28;
-  roundRect(ctx, viewW / 2 - 200, y, 400, 44, 8);
+  roundRect(ctx, viewW / 2 - 200, y, 400, 36, 8);
   ctx.fill();
   ctx.fillStyle = "#f0e6d4";
-  ctx.font = "600 18px Cormorant Garamond, serif";
+  ctx.font = "600 16px Cormorant Garamond, serif";
   ctx.textAlign = "center";
-  ctx.fillText(state.banner, viewW / 2, y + 28);
+  ctx.fillText(state.banner, viewW / 2, y + 24);
   ctx.textAlign = "left";
   ctx.restore();
 }

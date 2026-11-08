@@ -1,5 +1,13 @@
 import { createInput, type KeyState } from "./input";
 import {
+  UPGRADE_DEFS,
+  canBuy,
+  freshUpgrades,
+  upgradeCost,
+  type UpgradeId,
+  type Upgrades,
+} from "./upgrades";
+import {
   createWorld,
   expand,
   rectsOverlap,
@@ -72,19 +80,24 @@ export type GameState = {
   wave: number;
   waveTimer: number;
   dayDuration: number;
+  /** Day is split: shop (paused) → prep (timed repairs) → night */
+  dayPhase: "shop" | "prep" | null;
   betweenWaves: boolean;
   spawnedThisWave: number;
   toSpawn: number;
   spawnTimer: number;
   gold: number;
+  upgrades: Upgrades;
+  shopCooldown: number;
+  shopKeysHeld: Partial<Record<UpgradeId, boolean>>;
+  confirmHeld: boolean;
   lives: number;
   status: "playing" | "won" | "lost";
   elapsed: number;
 };
 
 const MAX_WAVES = 5;
-const FIRST_DAY = 16;
-const DAY_BETWEEN = 14;
+const PREP_SECONDS = 15;
 let nextEnemyId = 1;
 
 export function createGame(canvas: HTMLCanvasElement) {
@@ -162,16 +175,21 @@ function freshState(): GameState {
     camera: { x: 0, y: 0 },
     shake: 0,
     prompt: "",
-    banner: "Daylight — ready the keep",
+    banner: "Quartermaster is open — take your time",
     bannerLife: 2.8,
     wave: 1,
-    waveTimer: FIRST_DAY,
-    dayDuration: FIRST_DAY,
+    waveTimer: PREP_SECONDS,
+    dayDuration: PREP_SECONDS,
+    dayPhase: "shop",
     betweenWaves: true,
     spawnedThisWave: 0,
     toSpawn: 4,
     spawnTimer: 0,
-    gold: 0,
+    gold: 25,
+    upgrades: freshUpgrades(),
+    shopCooldown: 0,
+    shopKeysHeld: {},
+    confirmHeld: false,
     lives: 3,
     status: "playing",
     elapsed: 0,
@@ -181,16 +199,25 @@ function freshState(): GameState {
 function update(state: GameState, keys: KeyState, dt: number, canvas: HTMLCanvasElement) {
   state.elapsed += dt;
   state.player.interactCooldown = Math.max(0, state.player.interactCooldown - dt);
+  state.shopCooldown = Math.max(0, state.shopCooldown - dt);
   state.bannerLife = Math.max(0, state.bannerLife - dt);
   state.shake = Math.max(0, state.shake - dt * 10);
 
-  updateWaves(state, dt);
-  updatePlayer(state, keys, dt);
-  updateTowers(state, dt);
-  updateProjectiles(state, dt);
-  updateEnemies(state, dt);
+  updateWaves(state, dt, keys);
+  updateShop(state, keys);
+
+  // Shop phase: world paused so you can read/buy; prep/night run normally
+  if (state.dayPhase !== "shop") {
+    updatePlayer(state, keys, dt);
+    updateTowers(state, dt);
+    updateProjectiles(state, dt);
+    updateEnemies(state, dt);
+    updatePrompt(state, keys);
+  } else {
+    state.prompt = "";
+  }
+
   updateFloaters(state, dt);
-  updatePrompt(state, keys);
   updateCamera(state, canvas);
 
   if (state.lives <= 0) {
@@ -209,13 +236,31 @@ function update(state: GameState, keys: KeyState, dt: number, canvas: HTMLCanvas
   }
 }
 
-function updateWaves(state: GameState, dt: number) {
+function updateWaves(state: GameState, dt: number, keys: KeyState) {
   if (state.wave > MAX_WAVES) return;
 
   if (state.betweenWaves) {
+    if (state.dayPhase === "shop") {
+      const confirm = Boolean(keys["Enter"]);
+      const was = state.confirmHeld;
+      state.confirmHeld = confirm;
+      if (confirm && !was) {
+        state.dayPhase = "prep";
+        state.dayDuration = PREP_SECONDS;
+        state.waveTimer = PREP_SECONDS;
+        state.banner = "Prep time — repair & reload";
+        state.bannerLife = 2;
+        state.confirmHeld = true;
+        state.player.jumpLocked = true;
+      }
+      return;
+    }
+
+    // Timed repair/reload window
     state.waveTimer -= dt;
     if (state.waveTimer <= 0) {
       state.betweenWaves = false;
+      state.dayPhase = null;
       state.spawnedThisWave = 0;
       state.toSpawn = 4 + state.wave * 2;
       state.spawnTimer = 0.35;
@@ -235,16 +280,23 @@ function updateWaves(state: GameState, dt: number) {
   } else if (state.enemies.length === 0) {
     state.wave += 1;
     if (state.wave <= MAX_WAVES) {
-      state.betweenWaves = true;
-      state.dayDuration = DAY_BETWEEN;
-      state.waveTimer = DAY_BETWEEN;
-      state.gold += 15 + state.wave * 2;
-      state.banner = "Daybreak — repair & reload";
-      state.bannerLife = 2.5;
+      beginDayShop(state);
+      state.gold += 22 + state.wave * 4;
     } else {
       state.betweenWaves = false;
+      state.dayPhase = null;
     }
   }
+}
+
+function beginDayShop(state: GameState) {
+  state.betweenWaves = true;
+  state.dayPhase = "shop";
+  state.dayDuration = PREP_SECONDS;
+  state.waveTimer = PREP_SECONDS;
+  state.confirmHeld = true; // ignore held Space/Enter from jump
+  state.banner = "Quartermaster is open — take your time";
+  state.bannerLife = 2.5;
 }
 
 function spawnEnemy(state: GameState) {
@@ -265,10 +317,84 @@ function spawnEnemy(state: GameState) {
   });
 }
 
+function updateShop(state: GameState, keys: KeyState) {
+  const mapping: { code: string; id: UpgradeId }[] = [
+    { code: "Digit1", id: "power" },
+    { code: "Digit2", id: "magazine" },
+    { code: "Digit3", id: "braces" },
+    { code: "Digit4", id: "boots" },
+  ];
+
+  for (const { code, id } of mapping) {
+    const down = Boolean(keys[code]);
+    const was = Boolean(state.shopKeysHeld[id]);
+    state.shopKeysHeld[id] = down;
+
+    if (state.dayPhase !== "shop" || state.status !== "playing") continue;
+    if (state.shopCooldown > 0) continue;
+    if (down && !was) tryBuyUpgrade(state, id);
+  }
+}
+
+function tryBuyUpgrade(state: GameState, id: UpgradeId) {
+  if (!canBuy(id, state.upgrades, state.gold)) {
+    state.shopCooldown = 0.2;
+    return;
+  }
+
+  const cost = upgradeCost(id, state.upgrades[id]);
+  state.gold -= cost;
+  state.upgrades[id] += 1;
+  state.shopCooldown = 0.35;
+  applyUpgrade(state, id);
+
+  const def = UPGRADE_DEFS.find((d) => d.id === id)!;
+  state.banner = `${def.name} Lv ${state.upgrades[id]}`;
+  state.bannerLife = 1.4;
+  addFloater(
+    state,
+    state.player.x + state.player.w / 2,
+    state.player.y - 20,
+    `${def.name}!`,
+    "#d8b45a",
+  );
+}
+
+function applyUpgrade(state: GameState, id: UpgradeId) {
+  if (id === "power") {
+    for (const t of state.world.towers) t.damage += 5;
+    return;
+  }
+  if (id === "magazine") {
+    for (const t of state.world.towers) {
+      t.maxAmmo += 2;
+      t.ammo = Math.min(t.maxAmmo, t.ammo + 2);
+    }
+    return;
+  }
+  if (id === "braces") {
+    for (const w of state.world.walls) {
+      w.maxHp += 22;
+      if (w.hp > 0) w.hp = Math.min(w.maxHp, w.hp + 22);
+    }
+    for (const t of state.world.towers) {
+      t.maxHp += 12;
+      if (t.hp > 0) t.hp = Math.min(t.maxHp, t.hp + 12);
+    }
+  }
+  // boots applied via speed multiplier in movement
+}
+
+function moveSpeed(state: GameState, carrying: boolean): number {
+  const boots = 1 + state.upgrades.boots * 0.12;
+  const base = carrying ? 135 : 185;
+  return base * boots;
+}
+
 function updatePlayer(state: GameState, keys: KeyState, dt: number) {
   const p = state.player;
-  const baseSpeed = p.carrying ? 135 : 185;
-  const climb = 155;
+  const baseSpeed = moveSpeed(state, Boolean(p.carrying));
+  const climb = 155 * (1 + state.upgrades.boots * 0.06);
   const gravity = 1100;
   const jumpVel = -390;
 
@@ -439,7 +565,7 @@ function updateProjectiles(state: GameState, dt: number) {
   const before = state.enemies.length;
   state.enemies = state.enemies.filter((e) => e.hp > 0);
   const killed = before - state.enemies.length;
-  if (killed > 0) state.gold += killed * 3;
+  if (killed > 0) state.gold += killed * 4;
 }
 
 function updateEnemies(state: GameState, dt: number) {

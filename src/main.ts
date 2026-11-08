@@ -11,12 +11,12 @@ app.innerHTML = `
       <span>Maintain the walls. Feed the guns. Survive the night.</span>
     </div>
     <div class="hud">
-      <div>Phase <strong id="phase">Day</strong></div>
+      <div>Phase <strong id="phase">Shop</strong></div>
       <div>Night <strong id="wave">1</strong>/5</div>
       <div>Lives <strong id="lives">3</strong></div>
       <div>Gold <strong id="gold">0</strong></div>
       <div>Carry <strong id="carry">—</strong></div>
-      <div class="hint">Arrows move · Space jump · Z interact · X drop</div>
+      <div class="hint">Shop: 1–4 buy · Enter prep · Then arrows · Space · Z · X</div>
     </div>
   </header>
   <div class="stage">
@@ -53,7 +53,8 @@ restartBtn.addEventListener("click", () => {
 
 function syncHud() {
   const s = game.getState();
-  phaseEl.textContent = s.betweenWaves ? "Day" : "Night";
+  phaseEl.textContent =
+    s.dayPhase === "shop" ? "Shop" : s.dayPhase === "prep" ? "Prep" : "Night";
   waveEl.textContent = String(Math.min(s.wave, 5));
   livesEl.textContent = String(Math.max(0, s.lives));
   goldEl.textContent = String(s.gold);

@@ -921,3 +921,25 @@ body.touch-play .mute-btn {
   height: 1.9rem;
   margin-left: 0.4rem;
 }
+
+/* —— Personal best —— */
+.title-panel .personal-best {
+  margin: -0.35rem 0 0.9rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #e8c88c;
+}
+
+.panel .pb-note {
+  margin-top: -0.75rem;
+  margin-bottom: 0.9rem;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+  color: #cbb89a;
+}
+
+.panel .pb-note.is-new {
+  font-weight: 700;
+  color: #e8c88c;
+}

@@ -175,6 +175,8 @@ app.innerHTML = `
           <button type="button" id="pause-resume" class="pause-resume">Resume</button>
           <button type="button" id="pause-restart" class="pause-secondary">Restart run</button>
           <button type="button" id="pause-mute" class="pause-secondary" aria-pressed="false">Sound: on</button>
+          <button type="button" id="pause-motion" class="pause-secondary" aria-pressed="false"
+            title="No screen shake, calmer effects">Reduce motion: off</button>
         </div>
         <p class="pause-hint">Esc or P to resume</p>
       </div>
@@ -211,10 +213,14 @@ if (import.meta.env.DEV) (window as unknown as { __game: typeof game }).__game =
 
 // —— Reduce motion (title screen toggle; defaults to the OS preference) ——
 const reduceMotionInput = document.querySelector<HTMLInputElement>("#reduce-motion")!;
+// same setting, mirrored in the pause menu
+const pauseMotionBtn = document.querySelector<HTMLButtonElement>("#pause-motion")!;
 
 function syncMotionSetting() {
   const on = getReducedMotion();
   reduceMotionInput.checked = on;
+  pauseMotionBtn.textContent = on ? "Reduce motion: on" : "Reduce motion: off";
+  pauseMotionBtn.setAttribute("aria-pressed", String(on));
   // CSS hook: drops button press scaling, transitions and looping animations
   document.body.classList.toggle("reduce-motion", on);
 }
@@ -224,6 +230,7 @@ reduceMotionInput.addEventListener("change", () => {
   // don't leave focus on the checkbox, or game keys would be treated as form input
   reduceMotionInput.blur();
 });
+pauseMotionBtn.addEventListener("click", () => setReducedMotion(!getReducedMotion()));
 onSettingsChange(syncMotionSetting);
 syncMotionSetting();
 

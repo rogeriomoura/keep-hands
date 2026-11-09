@@ -1019,7 +1019,9 @@ body.touch-play .pause-btn {
     grid-template-columns: 1fr 1fr;
   }
 
-  .pause-actions .pause-resume {
+  /* full-width rows for the primary action and the long "Reduce motion" label */
+  .pause-actions .pause-resume,
+  .pause-actions #pause-motion {
     grid-column: 1 / -1;
     padding: 0.6rem 1rem;
   }

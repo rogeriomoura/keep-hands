@@ -61,6 +61,10 @@ export async function fetchTop(limit = 10): Promise<ScoreEntry[] | null> {
 }
 
 export function describeSubmitError(error: string): string {
+  // the run itself works offline (service worker); only posting needs a connection
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return "You're offline, so your time couldn't be posted.";
+  }
   switch (error) {
     case "rate_limited":
       return "Too many submissions. Try again in a few minutes.";

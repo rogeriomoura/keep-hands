@@ -1,4 +1,5 @@
 import "./style.css";
+import { registerServiceWorker } from "./sw/register";
 import { createGame, formatRunTime } from "./game";
 import { isMuted, setMuted, unlockAudio } from "./audio";
 import { sfx } from "./sfx";
@@ -602,3 +603,6 @@ function syncHud() {
 }
 
 syncHud();
+
+// Offline play (production builds only; see src/sw/)
+registerServiceWorker();

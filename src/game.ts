@@ -1,9 +1,8 @@
 import { setAudioPaused } from "./audio";
 import { MAX_FRAME_SECONDS } from "./game/constants";
-import { updateFloaters } from "./game/particles";
 import { tryBuyUpgrade, tryHire } from "./game/shop";
 import { freshState } from "./game/state";
-import { advance } from "./game/step";
+import { canUserPause, stepFrame } from "./game/pause";
 import type { ViewInsets } from "./game/types";
 import { confirmShopReady } from "./game/waves";
 import { createInput } from "./input";
@@ -21,6 +20,9 @@ export function createGame(canvas: HTMLCanvasElement) {
   let raf = 0;
   let pausedForOrientation = false;
   let pausedForUi = false;
+  /** Player pause (button, Esc/P) or auto-pause when the page is hidden */
+  let pausedByUser = false;
+  const syncAudioPause = () => setAudioPaused(pausedByUser || pausedForUi || pausedForOrientation);
   /** Screen px covered by on-screen controls; the camera may scroll past the world edge by this much */
   const insets = { left: 0, right: 0 };
 
@@ -85,14 +87,12 @@ export function createGame(canvas: HTMLCanvasElement) {
     // Frames over 100ms (tab switch, hitch) are capped; advance() sub-steps the rest.
     const elapsedSec = Math.min(MAX_FRAME_SECONDS, Math.max(0, (now - last) / 1000));
     last = now;
-    if (state.status === "playing" && !pausedForOrientation && !pausedForUi) {
-      const view = { width: canvas.clientWidth || canvas.width, height: canvas.clientHeight || canvas.height };
-      advance(state, input.keys, elapsedSec, view, insets);
-    } else {
-      state.bannerLife = Math.max(0, state.bannerLife - elapsedSec);
-      updateFloaters(state, elapsedSec);
-      state.shake = Math.max(0, state.shake - elapsedSec * 8);
-    }
+    const view = { width: canvas.clientWidth || canvas.width, height: canvas.clientHeight || canvas.height };
+    stepFrame(state, input.keys, elapsedSec, view, insets, {
+      user: pausedByUser,
+      orientation: pausedForOrientation,
+      ui: pausedForUi,
+    });
     render(ctx, state);
     raf = requestAnimationFrame(frame);
   };
@@ -104,15 +104,31 @@ export function createGame(canvas: HTMLCanvasElement) {
     start() {
       state = freshState("playing");
       pausedForOrientation = false;
+      pausedByUser = false;
       input.clearKeys();
+      syncAudioPause();
       sfx.runStarted();
     },
     restart() {
       state = freshState("playing");
       pausedForOrientation = false;
+      pausedByUser = false;
       input.clearKeys();
+      syncAudioPause();
       sfx.runStarted();
     },
+    /**
+     * Player pause: freezes the world and the run clock, silences audio.
+     * Only possible during a run; returns whether the pause state is now `paused`.
+     */
+    setPaused(paused: boolean): boolean {
+      if (paused && !canUserPause(state.status)) return false;
+      pausedByUser = paused;
+      input.clearKeys(); // nothing held across a pause (e.g. a key released while hidden)
+      syncAudioPause();
+      return true;
+    },
+    isPaused: () => pausedByUser,
     /** CSS px of the stage covered by touch controls (0 when hidden) */
     setViewInsets(next: ViewInsets) {
       insets.left = Math.max(0, next.left);
@@ -122,11 +138,11 @@ export function createGame(canvas: HTMLCanvasElement) {
     setUiPaused(paused: boolean) {
       pausedForUi = paused;
       input.clearKeys();
-      setAudioPaused(pausedForUi || pausedForOrientation);
+      syncAudioPause();
     },
     setOrientationPaused(paused: boolean) {
       pausedForOrientation = paused;
-      setAudioPaused(pausedForUi || pausedForOrientation);
+      syncAudioPause();
     },
     setKey(code: string, down: boolean) {
       input.setKey(code, down);

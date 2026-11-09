@@ -44,6 +44,9 @@ app.innerHTML = `
       <div>Carry <strong id="carry">—</strong></div>
       <div>Crew <strong id="crew">—</strong></div>
       <button type="button" class="fs-btn" id="fs-btn" aria-label="Fullscreen">Fullscreen</button>
+      <button type="button" class="pause-btn" id="pause-btn" aria-label="Pause game" aria-pressed="false" title="Pause (Esc or P)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+      </button>
     </div>
     <button type="button" class="mute-btn" id="mute-btn" aria-label="Mute sound" aria-pressed="false" title="Mute sound (M)">
       <svg class="icon-sound" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="wave" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/></svg>
@@ -141,6 +144,19 @@ app.innerHTML = `
           <ol class="board-list" id="end-board-list"></ol>
         </div>
         <button type="button" id="restart">Try again</button>
+      </div>
+    </div>
+
+    <div class="overlay pause-overlay" id="pause-overlay" hidden>
+      <div class="panel" role="dialog" aria-modal="true" aria-labelledby="pause-title">
+        <h2 id="pause-title">Paused</h2>
+        <p class="pause-time">Run time <strong id="pause-run-time">0:00.0</strong>. The clock is stopped.</p>
+        <div class="pause-actions">
+          <button type="button" id="pause-resume" class="pause-resume">Resume</button>
+          <button type="button" id="pause-restart" class="pause-secondary">Restart run</button>
+          <button type="button" id="pause-mute" class="pause-secondary" aria-pressed="false">Sound: on</button>
+        </div>
+        <p class="pause-hint">Esc or P to resume</p>
       </div>
     </div>
 
@@ -346,6 +362,7 @@ const fsBtn = document.querySelector<HTMLButtonElement>("#fs-btn")!;
 
 // —— Sound: unlock on first gesture, mute toggle (button + M), menu clicks ——
 const muteBtn = document.querySelector<HTMLButtonElement>("#mute-btn")!;
+const pauseMuteBtn = document.querySelector<HTMLButtonElement>("#pause-mute")!;
 
 // Browsers (iOS especially) only allow audio after a user gesture; keep listening so an
 // interrupted context (phone call, app switch) resumes on the next tap or key.
@@ -358,6 +375,8 @@ function syncMuteButton() {
   muteBtn.setAttribute("aria-pressed", String(muted));
   muteBtn.classList.toggle("is-muted", muted);
   muteBtn.title = muted ? "Unmute sound (M)" : "Mute sound (M)";
+  pauseMuteBtn.textContent = muted ? "Sound: off" : "Sound: on";
+  pauseMuteBtn.setAttribute("aria-pressed", String(muted));
 }
 
 function toggleMute() {
@@ -468,6 +487,7 @@ function syncTouchUi() {
     s.status === "playing" &&
     s.dayPhase !== "shop" &&
     !needsLandscape() &&
+    !game.isPaused() &&
     Boolean(overlay.hidden);
   touchUi.hidden = !show;
   document.body.classList.toggle("touch-controls-on", show);
@@ -509,7 +529,7 @@ startBtn.addEventListener("click", async () => {
   launchRun();
 });
 
-restartBtn.addEventListener("click", async () => {
+async function requestRestart() {
   // Phones/tablets go immersive on start; desktop browsers stay windowed (use the FS button)
   if (touchPlay) await enterImmersive(document.documentElement);
   if (syncRotateGate()) {
@@ -517,7 +537,88 @@ restartBtn.addEventListener("click", async () => {
     return;
   }
   launchRestart();
+}
+
+restartBtn.addEventListener("click", requestRestart);
+
+// —— Pause: HUD button, Esc/P, auto-pause when the page is hidden ——
+const pauseBtn = document.querySelector<HTMLButtonElement>("#pause-btn")!;
+const pauseOverlay = document.querySelector<HTMLDivElement>("#pause-overlay")!;
+const pauseRunTime = document.querySelector<HTMLElement>("#pause-run-time")!;
+const pauseResumeBtn = document.querySelector<HTMLButtonElement>("#pause-resume")!;
+const pauseRestartBtn = document.querySelector<HTMLButtonElement>("#pause-restart")!;
+
+/** Pausing only makes sense mid-run with no other screen or dialog on top. */
+function canOpenPause(): boolean {
+  // `hidden` is typed boolean | "until-found"; only a plain `true` counts as closed
+  return (
+    game.getState().status === "playing" &&
+    [title, overlay, fsHelp, boardModal, rotateGate].every((el) => el.hidden === true)
+  );
+}
+
+function syncPauseUi() {
+  const paused = game.isPaused();
+  pauseOverlay.hidden = !paused;
+  pauseBtn.setAttribute("aria-pressed", String(paused));
+  pauseBtn.setAttribute("aria-label", paused ? "Resume game" : "Pause game");
+  if (paused) pauseRunTime.textContent = formatRunTime(game.getState().runTime);
+  syncTouchUi();
+}
+
+function pauseGame() {
+  if (game.isPaused() || !canOpenPause()) return;
+  if (!game.setPaused(true)) return;
+  syncPauseUi();
+  pauseResumeBtn.focus();
+}
+
+function resumeGame() {
+  if (!game.isPaused()) return;
+  game.setPaused(false);
+  syncPauseUi();
+  // hand keyboard focus back to the page so arrow keys don't scroll or press buttons
+  if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+}
+
+pauseBtn.addEventListener("click", (e) => {
+  e.preventDefault();
+  if (game.isPaused()) resumeGame();
+  else pauseGame();
 });
+pauseResumeBtn.addEventListener("click", resumeGame);
+pauseRestartBtn.addEventListener("click", () => {
+  game.setPaused(false);
+  syncPauseUi();
+  void requestRestart();
+});
+pauseMuteBtn.addEventListener("click", (e) => {
+  e.preventDefault();
+  toggleMute();
+});
+
+window.addEventListener("keydown", (e) => {
+  if (e.code !== "Escape" && e.code !== "KeyP") return;
+  if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+  const t = e.target;
+  // typing initials etc. must not pause (mirrors input.ts)
+  if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) return;
+  if (t instanceof HTMLElement && t.isContentEditable) return;
+  if (game.isPaused()) {
+    e.preventDefault();
+    resumeGame();
+  } else if (canOpenPause()) {
+    e.preventDefault();
+    pauseGame();
+  }
+});
+
+// Switching tabs/apps, locking the phone or a call: freeze the run. No auto-resume —
+// the player comes back to the pause menu and resumes when ready.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") pauseGame();
+});
+window.addEventListener("pagehide", () => pauseGame());
 
 window.addEventListener("orientationchange", () => {
   syncRotateGate();

@@ -921,3 +921,110 @@ body.touch-play .mute-btn {
   height: 1.9rem;
   margin-left: 0.4rem;
 }
+
+/* —— Pause: HUD button + menu —— */
+.pause-btn {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 2.1rem;
+  height: 2.1rem;
+  padding: 0;
+  color: #e8dcc8;
+  background: rgba(20, 16, 12, 0.6);
+  border: 1px solid #5a4a38;
+  border-radius: 0.45rem;
+}
+
+.pause-btn svg {
+  width: 1.05rem;
+  height: 1.05rem;
+  fill: currentColor;
+}
+
+.pause-btn[aria-pressed="true"] {
+  color: #e8c88c;
+  border-color: #8a6a40;
+}
+
+.pause-btn:focus-visible {
+  outline: 2px solid #d8b45a;
+  outline-offset: 2px;
+}
+
+body.touch-play .pause-btn {
+  width: 1.9rem;
+  height: 1.9rem;
+}
+
+/* above the touch controls and the Top 10 window; below fullscreen help */
+.pause-overlay {
+  z-index: 16;
+}
+
+.pause-overlay .panel {
+  width: min(20rem, calc(100% - 2rem));
+  max-height: calc(100% - 1.5rem);
+  overflow: auto;
+  padding: 1.25rem 1.5rem 1.1rem;
+}
+
+.pause-overlay .panel h2 {
+  margin-bottom: 0.25rem;
+}
+
+.pause-overlay .pause-time {
+  margin-bottom: 0.9rem;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pause-actions {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.pause-actions .pause-resume {
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+}
+
+.pause-actions .pause-secondary {
+  background: #211a14;
+  border: 1px solid #8a6a40;
+  color: #e8c88c;
+}
+
+.pause-overlay .pause-hint {
+  margin: 0.75rem 0 0;
+  font-size: 0.75rem;
+  color: #7a6e60;
+}
+
+/* short screens (phones in landscape): tighter menu so it fits without scrolling */
+@media (max-height: 420px) {
+  .pause-overlay .panel {
+    padding: 0.9rem 1.25rem 0.8rem;
+  }
+
+  .pause-overlay .panel h2 {
+    font-size: 1.5rem;
+  }
+
+  .pause-overlay .pause-time {
+    margin-bottom: 0.6rem;
+  }
+
+  .pause-actions {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .pause-actions .pause-resume {
+    grid-column: 1 / -1;
+    padding: 0.6rem 1rem;
+  }
+
+  .pause-actions .pause-secondary {
+    padding: 0.5rem 0.75rem;
+  }
+}

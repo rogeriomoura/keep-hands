@@ -11,7 +11,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { build, type Plugin, type ResolvedConfig } from "vite";
-import { selectPrecacheFiles } from "../src/sw/precache";
+import { selectPrecacheFiles } from "../src/sw/precache.ts";
 
 async function listFiles(dir: string, base = dir): Promise<string[]> {
   const entries = await readdir(dir, { withFileTypes: true });

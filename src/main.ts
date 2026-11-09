@@ -10,6 +10,7 @@ import {
   titleLine,
   winMessage,
 } from "./personalBest";
+import { getReducedMotion, onSettingsChange, setReducedMotion } from "./settings";
 import { isMuted, setMuted, unlockAudio } from "./audio";
 import { sfx } from "./sfx";
 import {
@@ -111,6 +112,13 @@ app.innerHTML = `
           <p class="landscape-note">Phones: play in landscape with the on-screen controls. On iPhone, use Share → Add to Home Screen for fullscreen.</p>
         </div>
 
+        <div class="settings-row">
+          <label class="setting-toggle">
+            <input type="checkbox" id="reduce-motion" />
+            <span><strong>Reduce motion</strong>: no screen shake, calmer effects</span>
+          </label>
+        </div>
+
         <div class="board title-board" id="title-board" hidden>
           <h2>Fastest keepers</h2>
           <ol class="board-list" id="title-board-list"></ol>
@@ -200,6 +208,24 @@ if (!canvas) throw new Error("canvas missing");
 const game = createGame(canvas);
 // dev-only console handle for testing (stripped from production builds)
 if (import.meta.env.DEV) (window as unknown as { __game: typeof game }).__game = game;
+
+// —— Reduce motion (title screen toggle; defaults to the OS preference) ——
+const reduceMotionInput = document.querySelector<HTMLInputElement>("#reduce-motion")!;
+
+function syncMotionSetting() {
+  const on = getReducedMotion();
+  reduceMotionInput.checked = on;
+  // CSS hook: drops button press scaling, transitions and looping animations
+  document.body.classList.toggle("reduce-motion", on);
+}
+
+reduceMotionInput.addEventListener("change", () => {
+  setReducedMotion(reduceMotionInput.checked);
+  // don't leave focus on the checkbox, or game keys would be treated as form input
+  reduceMotionInput.blur();
+});
+onSettingsChange(syncMotionSetting);
+syncMotionSetting();
 
 const hud = document.querySelector<HTMLDivElement>("#hud")!;
 const phaseEl = document.querySelector("#phase")!;

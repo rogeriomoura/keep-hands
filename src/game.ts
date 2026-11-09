@@ -6,6 +6,7 @@ import { canUserPause, stepFrame } from "./game/pause";
 import type { ViewInsets } from "./game/types";
 import { confirmShopReady } from "./game/waves";
 import { createInput } from "./input";
+import { calmNewEffects } from "./motion";
 import { render } from "./render";
 import { setSfxViewport, sfx } from "./sfx";
 import { getShopLayout, hitTestShop } from "./shopLayout";
@@ -93,6 +94,8 @@ export function createGame(canvas: HTMLCanvasElement) {
       orientation: pausedForOrientation,
       ui: pausedForUi,
     });
+    // reduced motion: calm the particles this frame spawned (cosmetic only)
+    calmNewEffects(state);
     render(ctx, state);
     raf = requestAnimationFrame(frame);
   };

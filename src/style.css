@@ -1048,4 +1048,49 @@ body.touch-play .pause-btn {
 .panel .pb-note.is-new {
   font-weight: 700;
   color: #e8c88c;
+/* —— Settings (title screen) —— */
+.settings-row {
+  margin: 0.25rem 0 0.9rem;
+}
+
+.setting-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.88rem;
+  color: #cbb89a;
+  cursor: pointer;
+}
+
+.setting-toggle input {
+  width: 1.1rem;
+  height: 1.1rem;
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: #c47a3a;
+  cursor: pointer;
+}
+
+.setting-toggle strong {
+  color: #f0e6d4;
+}
+
+/* —— Reduced motion: no press scaling, transitions or looping animations —— */
+body.reduce-motion *,
+body.reduce-motion *::before,
+body.reduce-motion *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+
+body.reduce-motion .touch-btn.is-down,
+body.reduce-motion .touch-btn:active,
+body.reduce-motion button:active {
+  transform: none !important;
+}
+
+/* the rotate prompt still shows the phone turned sideways, just without animating */
+body.reduce-motion .rotate-icon .phone {
+  transform: rotate(90deg);
 }

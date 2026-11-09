@@ -6,6 +6,8 @@ import { drawBanner, drawDayTimer } from "./render/hud";
 import { drawPlayer } from "./render/player";
 import { drawBackdrop, drawGround, drawSupplies, drawTowers, drawWalls } from "./render/scenery";
 import { setTextBoost } from "./render/shared";
+import { shakeOffset } from "./motion";
+import { getReducedMotion } from "./settings";
 import { worldZoom } from "./world";
 
 export function render(ctx: CanvasRenderingContext2D, state: GameState) {
@@ -15,8 +17,10 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState) {
 
   ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
-  const shakeX = state.shake > 0 ? (Math.random() - 0.5) * state.shake * 2 : 0;
-  const shakeY = state.shake > 0 ? (Math.random() - 0.5) * state.shake * 2 : 0;
+  // reduced motion: no screen shake at all
+  const reduced = getReducedMotion();
+  const shakeX = shakeOffset(state.shake, reduced);
+  const shakeY = shakeOffset(state.shake, reduced);
 
   ctx.save();
   const zoom = worldZoom(viewW, viewH, world);

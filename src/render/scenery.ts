@@ -1,6 +1,8 @@
 /** Sky, ground, walls, towers, cannons and supplies. */
 import type { GameState } from "../game/types";
 import { drawBar, EDGE_BLEED, mixHex, withTextBoost } from "./shared";
+import { muzzleFlashScale } from "../motion";
+import { getReducedMotion } from "../settings";
 
 /** night: 0 = day sky, 1 = night sky — crossfades at dusk and dawn */
 export function drawBackdrop(
@@ -400,7 +402,8 @@ export function drawCannon(
   }
 
   if (armed && tower.muzzleFlash > 0) {
-    const flash = tower.muzzleFlash / 0.12;
+    // reduced motion: half-size, dimmer flash
+    const flash = (tower.muzzleFlash / 0.12) * muzzleFlashScale(getReducedMotion());
     ctx.fillStyle = `rgba(255, 200, 80, ${0.55 + flash * 0.45})`;
     ctx.beginPath();
     ctx.moveTo(32, 0);

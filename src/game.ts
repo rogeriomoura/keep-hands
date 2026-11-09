@@ -7,6 +7,7 @@ import { advance } from "./game/step";
 import type { ViewInsets } from "./game/types";
 import { confirmShopReady } from "./game/waves";
 import { createInput } from "./input";
+import { calmNewEffects } from "./motion";
 import { render } from "./render";
 import { setSfxViewport, sfx } from "./sfx";
 import { getShopLayout, hitTestShop } from "./shopLayout";
@@ -88,6 +89,8 @@ export function createGame(canvas: HTMLCanvasElement) {
     if (state.status === "playing" && !pausedForOrientation && !pausedForUi) {
       const view = { width: canvas.clientWidth || canvas.width, height: canvas.clientHeight || canvas.height };
       advance(state, input.keys, elapsedSec, view, insets);
+      // reduced motion: calm the particles this frame spawned (cosmetic only)
+      calmNewEffects(state);
     } else {
       state.bannerLife = Math.max(0, state.bannerLife - elapsedSec);
       updateFloaters(state, elapsedSec);

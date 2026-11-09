@@ -1,5 +1,15 @@
 import "./style.css";
 import { createGame, formatRunTime } from "./game";
+import {
+  browserStore,
+  loadBest,
+  lossMessage,
+  recordLoss,
+  recordWin,
+  saveBest,
+  titleLine,
+  winMessage,
+} from "./personalBest";
 import { isMuted, setMuted, unlockAudio } from "./audio";
 import { sfx } from "./sfx";
 import {
@@ -78,6 +88,7 @@ app.innerHTML = `
         <p class="lede">
           You are not the general. You haul powder, patch stone, and keep the guns fed while the night tries to tear the walls down.
         </p>
+        <p class="personal-best" id="title-best" hidden></p>
 
         <div class="controls-block">
           <h2>Controls</h2>
@@ -129,6 +140,7 @@ app.innerHTML = `
         <h2 id="end-title">Keep fallen</h2>
         <p id="end-body">The raiders broke through.</p>
         <p class="end-time" id="end-time"></p>
+        <p class="pb-note" id="end-best" hidden></p>
         <form class="submit-form" id="submit-form" hidden>
           <label for="initials">Your initials</label>
           <div class="submit-row">
@@ -198,6 +210,8 @@ const carryEl = document.querySelector("#carry")!;
 const crewEl = document.querySelector("#crew")!;
 const runTimeEl = document.querySelector<HTMLElement>("#run-time")!;
 const endTimeEl = document.querySelector<HTMLElement>("#end-time")!;
+const endBestEl = document.querySelector<HTMLParagraphElement>("#end-best")!;
+const titleBestEl = document.querySelector<HTMLParagraphElement>("#title-best")!;
 const titleBoard = document.querySelector<HTMLDivElement>("#title-board")!;
 const titleBoardList = document.querySelector<HTMLOListElement>("#title-board-list")!;
 const submitForm = document.querySelector<HTMLFormElement>("#submit-form")!;
@@ -296,6 +310,7 @@ async function showEndBoard() {
 }
 
 function resetEndScreen() {
+  endBestEl.hidden = true;
   submitForm.hidden = true;
   submitStatus.textContent = "";
   endBoard.hidden = true;
@@ -350,6 +365,21 @@ submitForm.addEventListener("submit", async (e) => {
 });
 
 loadTitleBoard();
+
+// —— Personal best (this browser only; works without the leaderboard API) ——
+function showTitleBest() {
+  const line = titleLine(loadBest(browserStore()));
+  titleBestEl.textContent = line ?? "";
+  titleBestEl.hidden = !line;
+}
+
+function showEndBest(message: { text: string; isNew: boolean }) {
+  endBestEl.textContent = message.text;
+  endBestEl.classList.toggle("is-new", message.isNew);
+  endBestEl.hidden = false;
+}
+
+showTitleBest();
 const title = document.querySelector<HTMLDivElement>("#title")!;
 const overlay = document.querySelector<HTMLDivElement>("#overlay")!;
 const endTitle = document.querySelector("#end-title")!;
@@ -685,6 +715,12 @@ function syncHud() {
       endBody.textContent =
         "The keep still stands. Towers fed, walls patched — good work.";
       endTimeEl.textContent = `All 5 nights in ${formatRunTime(s.runTime)}`;
+      // record right away — independent of the leaderboard post or the API being up
+      const store = browserStore();
+      const win = recordWin(loadBest(store), Math.round(s.runTime * 1000), Date.now());
+      saveBest(store, win.next);
+      showEndBest(winMessage(win.outcome));
+      showTitleBest();
       if (leaderboardEnabled) {
         submitForm.hidden = false;
         initialsInput.value = savedInitials();
@@ -695,6 +731,11 @@ function syncHud() {
       endBody.textContent =
         "Something went unrepaired. The next shift will remember.";
       endTimeEl.textContent = `Fell on night ${Math.min(s.wave, 5)} after ${formatRunTime(s.runTime)}`;
+      const store = browserStore();
+      const loss = recordLoss(loadBest(store), Math.min(s.wave, 5));
+      saveBest(store, loss.next);
+      showEndBest(lossMessage(loss.outcome));
+      showTitleBest();
       showEndBoard();
     }
   }

@@ -1,4 +1,5 @@
 import type { Debris } from "./game";
+import { sfx } from "./sfx";
 import { expand, rectsOverlap, type Rect, type World } from "./world";
 
 export type CarryKind = "ammo" | "stone";
@@ -39,6 +40,8 @@ export const REPAIR_HIT = 0.8;
 
 type HelperState = {
   world: World;
+  /** only used to pan crew sounds */
+  camera: { x: number; y: number };
   helpers: Helper[];
   floaters: {
     x: number;
@@ -131,6 +134,7 @@ function animateHelper(
   if (h.task === "repair") {
     const blows = (t: number) => Math.floor(t / REPAIR_SWING + (1 - REPAIR_HIT));
     if (blows(h.taskT) > blows(before)) {
+      sfx.hammer(state, h.x + h.w / 2 + h.facing * 18, true);
       // where the hammer head lands (shoulder + arm + handle, angled down-forward)
       const x = h.x + h.w / 2 + h.facing * 18;
       const y = h.y + 18;
@@ -197,6 +201,7 @@ function updateRunner(state: HelperState, h: Helper, dt: number) {
     if (!ammo) return;
     if (near(h, ammo.body, 12)) {
       h.carrying = "ammo";
+      sfx.pickup(state, h.x + h.w / 2, true);
       addHelperFloater(state, h, "AMMO", "#d8b45a");
       beginWork(h, "pickup", 0.3);
       return;
@@ -240,6 +245,7 @@ function updateRunner(state: HelperState, h: Helper, dt: number) {
     h.carrying = null;
     h.targetTowerId = null;
     beginWork(h, "load", 0.5);
+    sfx.reload(state, h.x + h.w / 2, true);
     // face the cannon while loading (facing is cosmetic for helpers)
     h.facing = tower.base.x + tower.base.w / 2 < h.x + h.w / 2 ? -1 : 1;
     h.onLadder = false;
@@ -300,6 +306,7 @@ function updateMason(state: HelperState, h: Helper, dt: number) {
     if (!stone) return;
     if (near(h, stone.body, 14)) {
       h.carrying = "stone";
+      sfx.pickup(state, h.x + h.w / 2, true);
       addHelperFloater(state, h, "STONE", "#9a9488");
       beginWork(h, "pickup", 0.35);
       return;

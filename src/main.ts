@@ -1,5 +1,7 @@
 import "./style.css";
 import { createGame, formatRunTime } from "./game";
+import { isMuted, setMuted, unlockAudio } from "./audio";
+import { sfx } from "./sfx";
 import {
   describeSubmitError,
   fetchTop,
@@ -43,6 +45,10 @@ app.innerHTML = `
       <div>Crew <strong id="crew">—</strong></div>
       <button type="button" class="fs-btn" id="fs-btn" aria-label="Fullscreen">Fullscreen</button>
     </div>
+    <button type="button" class="mute-btn" id="mute-btn" aria-label="Mute sound" aria-pressed="false" title="Mute sound (M)">
+      <svg class="icon-sound" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="wave" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/></svg>
+      <svg class="icon-muted" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="wave" d="M16.5 9.5l5 5M21.5 9.5l-5 5"/></svg>
+    </button>
   </header>
   <div class="stage">
     <canvas id="game"></canvas>
@@ -96,7 +102,22 @@ app.innerHTML = `
           <ol class="board-list" id="title-board-list"></ol>
         </div>
 
-        <button type="button" id="start" class="start-btn">Start game</button>
+        <div class="title-actions">
+          <button type="button" id="start" class="start-btn">Start game</button>
+          <button type="button" id="board-btn" class="board-btn" hidden>Top 10</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="overlay board-modal" id="board-modal" hidden>
+      <div class="panel" role="dialog" aria-modal="true" aria-labelledby="board-modal-title">
+        <h2 id="board-modal-title">Fastest keepers</h2>
+        <p class="board-modal-sub">Quickest wins of all 5 nights (shop time not counted)</p>
+        <div class="board">
+          <ol class="board-list" id="board-modal-list"></ol>
+        </div>
+        <p class="submit-status" id="board-modal-status" role="status"></p>
+        <button type="button" id="board-modal-close">Close</button>
       </div>
     </div>
 
@@ -208,7 +229,46 @@ async function loadTitleBoard() {
   if (!top) return;
   renderBoard(titleBoardList, top);
   titleBoard.hidden = false;
+  boardBtn.hidden = false; // API reachable — offer the full top 10
 }
+
+// —— Top 10 window (title menu) ——
+const boardBtn = document.querySelector<HTMLButtonElement>("#board-btn")!;
+const boardModal = document.querySelector<HTMLDivElement>("#board-modal")!;
+const boardModalList = document.querySelector<HTMLOListElement>("#board-modal-list")!;
+const boardModalStatus = document.querySelector<HTMLParagraphElement>("#board-modal-status")!;
+const boardModalClose = document.querySelector<HTMLButtonElement>("#board-modal-close")!;
+
+async function openBoardModal() {
+  boardModal.hidden = false;
+  boardModalList.replaceChildren();
+  boardModalStatus.textContent = "Loading…";
+  boardModalClose.focus();
+  const top = await fetchTop(10);
+  if (boardModal.hidden) return;
+  if (top) {
+    renderBoard(boardModalList, top);
+    boardModalStatus.textContent = "";
+  } else {
+    boardModalStatus.textContent = "Couldn't load the leaderboard. Check your connection.";
+  }
+}
+
+function closeBoardModal() {
+  if (boardModal.hidden) return;
+  boardModal.hidden = true;
+  boardBtn.focus();
+}
+
+boardBtn.addEventListener("click", openBoardModal);
+boardModalClose.addEventListener("click", closeBoardModal);
+// click/tap outside the panel closes it
+boardModal.addEventListener("click", (e) => {
+  if (e.target === boardModal) closeBoardModal();
+});
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeBoardModal();
+});
 
 async function showEndBoard() {
   endBoard.hidden = true;
@@ -283,6 +343,51 @@ const restartBtn = document.querySelector<HTMLButtonElement>("#restart")!;
 const rotateGate = document.querySelector<HTMLDivElement>("#rotate-gate")!;
 const touchUi = document.querySelector<HTMLDivElement>("#touch-ui")!;
 const fsBtn = document.querySelector<HTMLButtonElement>("#fs-btn")!;
+
+// —— Sound: unlock on first gesture, mute toggle (button + M), menu clicks ——
+const muteBtn = document.querySelector<HTMLButtonElement>("#mute-btn")!;
+
+// Browsers (iOS especially) only allow audio after a user gesture; keep listening so an
+// interrupted context (phone call, app switch) resumes on the next tap or key.
+for (const type of ["pointerdown", "touchstart", "keydown"] as const) {
+  window.addEventListener(type, () => unlockAudio(), { capture: true, passive: true });
+}
+
+function syncMuteButton() {
+  const muted = isMuted();
+  muteBtn.setAttribute("aria-pressed", String(muted));
+  muteBtn.classList.toggle("is-muted", muted);
+  muteBtn.title = muted ? "Unmute sound (M)" : "Mute sound (M)";
+}
+
+function toggleMute() {
+  setMuted(!isMuted());
+  syncMuteButton();
+  if (!isMuted()) sfx.uiClick(); // audible confirmation when sound comes back
+}
+
+muteBtn.addEventListener("click", (e) => {
+  e.preventDefault();
+  toggleMute();
+});
+
+window.addEventListener("keydown", (e) => {
+  if (e.code !== "KeyM" || e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+  const t = e.target;
+  // typing initials etc. must not toggle sound (mirrors input.ts)
+  if (t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) return;
+  if (t instanceof HTMLElement && t.isContentEditable) return;
+  toggleMute();
+});
+
+// menu buttons click; on-screen game controls and the mute button don't
+document.addEventListener("click", (e) => {
+  const button = e.target instanceof Element ? e.target.closest("button") : null;
+  if (!button || button === muteBtn || button.classList.contains("touch-btn")) return;
+  sfx.uiClick();
+});
+
+syncMuteButton();
 
 if (touchPlay) {
   bindTouchControls(touchUi, (code, down) => game.setKey(code, down));

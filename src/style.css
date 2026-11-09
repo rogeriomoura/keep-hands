@@ -766,11 +766,158 @@ body.immersive:not(.is-fullscreen) #app {
   touch-action: pan-y;
 }
 
-.title-panel .start-btn {
+.title-panel .title-actions {
   position: sticky;
   bottom: 0;
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.35rem;
+  background: #16120e; /* solid so scrolled text never shows through the gap */
   /* fade content above the button; a panel-coloured band hides what scrolls under the bottom padding */
   box-shadow:
     0 -14px 18px 4px #17130f,
     0 26px 0 26px #16120e;
+}
+
+.title-actions .start-btn {
+  flex: 1;
+  margin-top: 0;
+}
+
+/* secondary action: outlined, sits beside Start */
+.board-btn {
+  flex: 0 0 auto;
+  padding: 0.85rem 1.1rem;
+  background: #211a14;
+  border: 1px solid #8a6a40;
+  color: #e8c88c;
+}
+
+.board-btn[hidden] {
+  display: none;
+}
+
+/* —— Top 10 window —— */
+.board-modal {
+  z-index: 15;
+}
+
+.board-modal .panel {
+  width: min(22rem, calc(100% - 2rem));
+  max-height: calc(100% - 1.5rem);
+  overflow: auto;
+  padding: 1.25rem 1.5rem 1.4rem;
+}
+
+.board-modal .panel h2 {
+  font-size: 1.6rem;
+  margin-bottom: 0.2rem;
+}
+
+.board-modal .board-modal-sub {
+  margin-bottom: 0.6rem;
+  font-size: 0.8rem;
+}
+
+.board-modal .board {
+  margin-bottom: 0.4rem;
+}
+
+/* Short screens (phones in landscape): two columns so all 10 rows + Close fit */
+@media (max-height: 520px) {
+  .board-modal .panel {
+    width: min(32rem, calc(100% - 2rem));
+    padding: 0.9rem 1.25rem 1rem;
+  }
+
+  .board-modal .panel h2 {
+    font-size: 1.35rem;
+  }
+
+  .board-modal .board-modal-sub {
+    margin-bottom: 0.4rem;
+    font-size: 0.75rem;
+  }
+
+  .board-modal .board {
+    max-width: none;
+    margin: 0.25rem 0 0.4rem;
+  }
+
+  .board-modal .board-list {
+    column-count: 2;
+    column-gap: 1.5rem;
+  }
+
+  .board-modal .board-list li {
+    break-inside: avoid;
+  }
+
+  .board-modal .submit-status:empty {
+    display: none;
+  }
+}
+
+/* —— Mute toggle (topbar, always visible) —— */
+.hud {
+  margin-left: auto;
+}
+
+.mute-btn {
+  align-self: center;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 2.1rem;
+  height: 2.1rem;
+  margin-left: 0.6rem;
+  padding: 0;
+  color: #e8dcc8;
+  background: rgba(20, 16, 12, 0.6);
+  border: 1px solid #5a4a38;
+  border-radius: 0.45rem;
+}
+
+.hud[hidden] + .mute-btn {
+  margin-left: auto;
+}
+
+.mute-btn svg {
+  grid-area: 1 / 1;
+  width: 1.2rem;
+  height: 1.2rem;
+  fill: currentColor;
+  stroke: none;
+}
+
+.mute-btn svg .wave {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.mute-btn .icon-muted,
+.mute-btn.is-muted .icon-sound {
+  display: none;
+}
+
+.mute-btn.is-muted .icon-muted {
+  display: block;
+}
+
+.mute-btn.is-muted {
+  color: #c45c2a;
+  border-color: rgba(196, 92, 42, 0.6);
+}
+
+.mute-btn:focus-visible {
+  outline: 2px solid #d8b45a;
+  outline-offset: 2px;
+}
+
+body.touch-play .mute-btn {
+  width: 1.9rem;
+  height: 1.9rem;
+  margin-left: 0.4rem;
 }

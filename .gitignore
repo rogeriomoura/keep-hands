@@ -26,3 +26,6 @@ dist-ssr
 # Cloudflare Worker (leaderboard) local state and dev secrets
 .wrangler/
 .dev.vars
+
+# Claude Code agent worktrees
+.claude/worktrees/

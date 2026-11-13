@@ -1,10 +1,10 @@
 /**
  * Keep Hands leaderboard — fastest full runs (all 5 nights).
  *
- *   POST /runs    → { token }                       call when a run starts
+ *   POST /runs    { act? }  → { token }              call when a run starts (act 1 or 2)
  *   POST /scores  { token, initials, timeMs }        call when a run is won
- *                 → { rank, entry, top }
- *   GET  /scores?limit=10 → { top }
+ *                 → { rank, act, entry, top }        (the act comes from the token)
+ *   GET  /scores?act=1&limit=10 → { top }
  *
  * The game runs on the player's device, so a time can never be fully trusted.
  * The run token makes casual cheating impractical: it is HMAC-signed with a
@@ -19,8 +19,13 @@ export interface Env {
   ALLOWED_ORIGINS: string;
 }
 
-/** 5 preps × 15s + the time each night needs just to spawn its raiders ≈ 111s */
-const MIN_RUN_MS = 105_000;
+/**
+ * Fastest plausible win per act: 5 preps × 15s + the time each night needs just to
+ * spawn its roster (Act 1 ≈ 111s, Act 2 ≈ 127s; see src/game/acts.ts
+ * theoreticalMinSeconds — a game test keeps these floors below it).
+ */
+const MIN_RUN_MS_BY_ACT: Record<Act, number> = { 1: 105_000, 2: 120_000 };
+type Act = 1 | 2;
 const MAX_RUN_MS = 3 * 60 * 60 * 1000;
 /** A run (including unlimited shop time) must finish within this long of starting */
 const TOKEN_MAX_AGE_MS = 12 * 60 * 60 * 1000;
@@ -49,11 +54,15 @@ export default {
     const url = new URL(request.url);
     try {
       if (url.pathname === "/runs" && request.method === "POST") {
-        return json({ token: await mintToken(env) }, 200, cors);
+        const act = await requestedAct(request);
+        if (!act) return json({ error: "bad_act" }, 400, cors);
+        return json({ token: await mintToken(env, act) }, 200, cors);
       }
       if (url.pathname === "/scores" && request.method === "GET") {
         const limit = clampInt(url.searchParams.get("limit"), 1, 50, 10);
-        return json({ top: await topScores(env, limit) }, 200, cors);
+        const act = parseAct(url.searchParams.get("act") ?? "1");
+        if (!act) return json({ error: "bad_act" }, 400, cors);
+        return json({ top: await topScores(env, limit, act) }, 200, cors);
       }
       if (url.pathname === "/scores" && request.method === "POST") {
         return await submitScore(request, env, cors);
@@ -85,11 +94,13 @@ async function submitScore(request: Request, env: Env, cors: HeadersInit) {
     return json({ error: "bad_time" }, 400, cors);
   }
   const timeMs = Math.round(rawTime);
-  if (timeMs < MIN_RUN_MS || timeMs > MAX_RUN_MS) return json({ error: "implausible_time" }, 400, cors);
-
   if (typeof token !== "string") return json({ error: "bad_token" }, 400, cors);
   const run = await verifyToken(token, env);
   if (!run) return json({ error: "bad_token" }, 400, cors);
+  // the act is whatever the server signed when the run started, never client-claimed
+  if (timeMs < MIN_RUN_MS_BY_ACT[run.act] || timeMs > MAX_RUN_MS) {
+    return json({ error: "implausible_time" }, 400, cors);
+  }
 
   const now = Date.now();
   const realElapsed = now - run.startedAt;
@@ -107,61 +118,89 @@ async function submitScore(request: Request, env: Env, cors: HeadersInit) {
 
   try {
     await env.DB.prepare(
-      "INSERT INTO scores (run_id, initials, time_ms, created_at, ip_hash) VALUES (?, ?, ?, ?, ?)",
+      "INSERT INTO scores (run_id, initials, time_ms, created_at, ip_hash, act) VALUES (?, ?, ?, ?, ?, ?)",
     )
-      .bind(run.runId, initials, timeMs, now, ipHash)
+      .bind(run.runId, initials, timeMs, now, ipHash, run.act)
       .run();
   } catch (err) {
     if (String(err).includes("UNIQUE")) return json({ error: "already_submitted" }, 409, cors);
     throw err;
   }
 
-  const ahead = await env.DB.prepare("SELECT COUNT(*) AS n FROM scores WHERE time_ms < ?")
-    .bind(timeMs)
+  const ahead = await env.DB.prepare("SELECT COUNT(*) AS n FROM scores WHERE act = ? AND time_ms < ?")
+    .bind(run.act, timeMs)
     .first<{ n: number }>();
 
   return json(
     {
       rank: (ahead?.n ?? 0) + 1,
+      act: run.act,
       entry: { initials, timeMs },
-      top: await topScores(env, 10),
+      top: await topScores(env, 10, run.act),
     },
     201,
     cors,
   );
 }
 
-async function topScores(env: Env, limit: number) {
+async function topScores(env: Env, limit: number, act: Act) {
   const { results } = await env.DB.prepare(
-    "SELECT initials, time_ms, created_at FROM scores ORDER BY time_ms ASC, created_at ASC LIMIT ?",
+    "SELECT initials, time_ms, created_at FROM scores WHERE act = ? ORDER BY time_ms ASC, created_at ASC LIMIT ?",
   )
-    .bind(limit)
+    .bind(act, limit)
     .all<ScoreRow>();
   return results.map((r) => ({ initials: r.initials, timeMs: r.time_ms, createdAt: r.created_at }));
 }
 
-// —— Run tokens: "<runId>.<startedAt>.<base64url HMAC-SHA256>" ——
+// —— Run tokens ——
+// Act 2+: "<runId>.<startedAt>.<act>.<base64url HMAC-SHA256>" (the act is signed)
+// Legacy:  "<runId>.<startedAt>.<base64url HMAC-SHA256>" → Act 1
 
-async function mintToken(env: Env): Promise<string> {
-  const payload = `${crypto.randomUUID()}.${Date.now()}`;
+function parseAct(raw: unknown): Act | null {
+  const n = typeof raw === "number" ? raw : typeof raw === "string" && /^\d+$/.test(raw) ? Number(raw) : NaN;
+  return n === 1 || n === 2 ? n : null;
+}
+
+/** Act asked for when starting a run; an empty or JSON-less body means Act 1. */
+async function requestedAct(request: Request): Promise<Act | null> {
+  const text = await request.text();
+  if (!text.trim()) return 1;
+  try {
+    const body = JSON.parse(text) as { act?: unknown } | null;
+    return body?.act === undefined ? 1 : parseAct(body.act);
+  } catch {
+    return null;
+  }
+}
+
+async function mintToken(env: Env, act: Act): Promise<string> {
+  const payload = act === 1 ? `${crypto.randomUUID()}.${Date.now()}` : `${crypto.randomUUID()}.${Date.now()}.${act}`;
   const key = await hmacKey(env);
   const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
   return `${payload}.${toBase64Url(new Uint8Array(sig))}`;
 }
 
-async function verifyToken(token: string, env: Env): Promise<{ runId: string; startedAt: number } | null> {
+async function verifyToken(
+  token: string,
+  env: Env,
+): Promise<{ runId: string; startedAt: number; act: Act } | null> {
   const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  const [runId, startedRaw, sigRaw] = parts as [string, string, string];
+  if (parts.length !== 3 && parts.length !== 4) return null;
+  const sigRaw = parts[parts.length - 1]!;
+  const [runId, startedRaw] = parts as [string, string];
+  const act = parts.length === 4 ? parseAct(parts[2]) : 1;
+  // Act 1 tokens never carry an act field, so a "<…>.1.<sig>" form isn't valid
+  if (!act || (parts.length === 4 && act === 1)) return null;
   const startedAt = Number(startedRaw);
   if (!runId || !Number.isSafeInteger(startedAt)) return null;
   const sig = fromBase64Url(sigRaw);
   if (!sig) return null;
   const key = await hmacKey(env);
+  const signed = parts.slice(0, -1).join(".");
   // constant-time comparison happens inside subtle.verify
-  const ok = await crypto.subtle.verify("HMAC", key, sig, new TextEncoder().encode(`${runId}.${startedRaw}`));
+  const ok = await crypto.subtle.verify("HMAC", key, sig, new TextEncoder().encode(signed));
   if (!ok || startedAt > Date.now() + CLOCK_SLACK_MS) return null;
-  return { runId, startedAt };
+  return { runId, startedAt, act };
 }
 
 function hmacKey(env: Env) {

@@ -233,3 +233,67 @@ describe("routing", () => {
     expect((await call("GET", "/nope")).status).toBe(404);
   });
 });
+
+/** An Act 2 token (act signed into the payload), started `ageMs` ago. */
+async function act2Token(ageMs: number, actField = "2"): Promise<string> {
+  const payload = `${crypto.randomUUID()}.${Date.now() - ageMs}.${actField}`;
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(SECRET),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
+  return `${payload}.${toBase64Url(new Uint8Array(sig))}`;
+}
+
+describe("acts", () => {
+  it("mints Act 2 tokens with the act signed in, and Act 1 tokens in the legacy form", async () => {
+    const a2 = await call("POST", "/runs", { body: { act: 2 } });
+    expect(a2.status).toBe(200);
+    expect(a2.body.token!.split(".")).toHaveLength(4);
+    expect(a2.body.token!.split(".")[2]).toBe("2");
+    const a1 = await call("POST", "/runs", { body: { act: 1 } });
+    expect(a1.body.token!.split(".")).toHaveLength(3);
+    const none = await call("POST", "/runs");
+    expect(none.body.token!.split(".")).toHaveLength(3);
+  });
+
+  it("rejects unknown acts", async () => {
+    expect((await call("POST", "/runs", { body: { act: 3 } })).body.error).toBe("bad_act");
+    expect((await call("POST", "/runs", { body: { act: "x" } })).body.error).toBe("bad_act");
+    expect((await call("GET", "/scores?act=9")).body.error).toBe("bad_act");
+  });
+
+  it("keeps separate boards and ranks within the act", async () => {
+    expect((await submit({ token: await token(400_000), initials: "ONE", timeMs: 200_000 }, "198.51.100.1")).status).toBe(201);
+    const a2 = await submit({ token: await act2Token(400_000), initials: "TWO", timeMs: 300_000 }, "198.51.100.2");
+    expect(a2.status).toBe(201);
+    expect(a2.body.act).toBe(2);
+    expect(a2.body.rank).toBe(1); // the faster Act 1 time doesn't count against it
+    expect(a2.body.top!.map((e) => e.initials)).toEqual(["TWO"]);
+
+    expect((await call("GET", "/scores?act=1")).body.top!.map((e) => e.initials)).toEqual(["ONE"]);
+    expect((await call("GET", "/scores?act=2")).body.top!.map((e) => e.initials)).toEqual(["TWO"]);
+    // no act = Act 1 (what the current live game asks for)
+    expect((await call("GET", "/scores")).body.top!.map((e) => e.initials)).toEqual(["ONE"]);
+  });
+
+  it("applies the Act 2 floor (120s) to Act 2 runs only", async () => {
+    const quick = 110_000; // fine for Act 1 (floor 105s), too fast for Act 2
+    expect((await submit({ token: await token(400_000), initials: "AAA", timeMs: quick }, "198.51.100.3")).status).toBe(201);
+    const a2 = await submit({ token: await act2Token(400_000), initials: "BBB", timeMs: quick }, "198.51.100.4");
+    expect(a2.status).toBe(400);
+    expect(a2.body.error).toBe("implausible_time");
+  });
+
+  it("won't accept an Act 1 token re-labelled as Act 2, or an explicit act-1 field", async () => {
+    const legacy = await token(400_000);
+    const [id, started, sig] = legacy.split(".");
+    const forged = `${id}.${started}.2.${sig}`;
+    expect((await submit({ token: forged, initials: "CCC", timeMs: 300_000 }, "198.51.100.5")).body.error).toBe("bad_token");
+    const explicitOne = await act2Token(400_000, "1");
+    expect((await submit({ token: explicitOne, initials: "DDD", timeMs: 300_000 }, "198.51.100.6")).body.error).toBe("bad_token");
+  });
+});

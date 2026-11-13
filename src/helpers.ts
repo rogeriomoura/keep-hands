@@ -21,6 +21,8 @@ export type Helper = {
   label: string;
   /** Tower the runner is currently servicing */
   targetTowerId: string | null;
+  /** Act 2 promotion: faster, and the runner loads more / the mason repairs more */
+  veteran: boolean;
   // Animation-only state (never read by the AI or physics)
   walkPhase: number;
   stride: number;
@@ -32,6 +34,22 @@ export type Helper = {
 };
 
 export type HelperTask = "pickup" | "load" | "repair";
+
+/** Promoted (veteran) crew. Unpromoted crew use exactly the original numbers. */
+export const VETERAN_SPEED = { runner: 1.35, mason: 1.3 } as const;
+const VETERAN_RUNNER_LOAD = 5;
+const VETERAN_MASON = { wall: 30, tower: 24, wallRebuild: 0.5, towerRebuild: 0.45, pause: 0.9 } as const;
+
+/** Movement multiplier: 1 for regular crew, faster once promoted */
+function pace(h: Helper): number {
+  return h.veteran ? VETERAN_SPEED[h.role] : 1;
+}
+
+/** Promote a hired helper (Act 2 shop). Their label gains a star. */
+export function promoteHelper(h: Helper) {
+  h.veteran = true;
+  h.label = h.role === "runner" ? "Runner ★" : "Mason ★";
+}
 
 /** Seconds per hammer blow while the mason repairs (cosmetic) */
 export const REPAIR_SWING = 0.36;
@@ -77,6 +95,7 @@ export function spawnHelper(
     workTimer: 0,
     label: role === "runner" ? "Runner" : "Mason",
     targetTowerId: null,
+    veteran: false,
     walkPhase: 0,
     stride: 0,
     climbPhase: 0,
@@ -240,7 +259,7 @@ function updateRunner(state: HelperState, h: Helper, dt: number) {
       h.targetTowerId = null;
       return;
     }
-    const add = Math.min(3, tower.maxAmmo - tower.ammo);
+    const add = Math.min(h.veteran ? VETERAN_RUNNER_LOAD : 3, tower.maxAmmo - tower.ammo);
     tower.ammo += add;
     h.carrying = null;
     h.targetTowerId = null;
@@ -267,7 +286,7 @@ function updateRunner(state: HelperState, h: Helper, dt: number) {
     h.vx = 0;
     const targetY = platform.y - h.h;
     if (h.y > targetY + 2) {
-      h.vy = -125;
+      h.vy = -125 * pace(h);
       applyHelperPhysics(state, h, dt);
       h.x = ladderCx - h.w / 2;
       return;
@@ -319,25 +338,25 @@ function updateMason(state: HelperState, h: Helper, dt: number) {
     if (target.kind === "wall") {
       const wall = state.world.walls.find((w) => w.id === target.id)!;
       if (wall.hp <= 0) {
-        wall.hp = Math.floor(wall.maxHp * 0.35);
+        wall.hp = Math.floor(wall.maxHp * (h.veteran ? VETERAN_MASON.wallRebuild : 0.35));
         restoreWallPlatform(state, wall);
         addHelperFloater(state, h, "REBUILT", "#8fbc8f");
       } else {
         const before = wall.hp;
-        wall.hp = Math.min(wall.maxHp, wall.hp + 18);
+        wall.hp = Math.min(wall.maxHp, wall.hp + (h.veteran ? VETERAN_MASON.wall : 18));
         addHelperFloater(state, h, `+${wall.hp - before}`, "#8fbc8f");
       }
     } else {
       const tower = state.world.towers.find((t) => t.id === target.id)!;
       const before = Math.max(0, tower.hp);
-      if (tower.hp <= 0) tower.hp = Math.floor(tower.maxHp * 0.3);
-      else tower.hp = Math.min(tower.maxHp, tower.hp + 14);
+      if (tower.hp <= 0) tower.hp = Math.floor(tower.maxHp * (h.veteran ? VETERAN_MASON.towerRebuild : 0.3));
+      else tower.hp = Math.min(tower.maxHp, tower.hp + (h.veteran ? VETERAN_MASON.tower : 14));
       addHelperFloater(state, h, `+${tower.hp - before}`, "#8fbc8f");
     }
     h.carrying = null;
     // face the stonework being patched (cosmetic)
     h.facing = target.body.x + target.body.w / 2 < h.x + h.w / 2 ? -1 : 1;
-    beginWork(h, "repair", 1.1);
+    beginWork(h, "repair", h.veteran ? VETERAN_MASON.pause : 1.1);
     return;
   }
 
@@ -426,7 +445,7 @@ function climbTowardGround(state: HelperState, h: Helper, dt: number) {
   const ladderCx = ladder.x + ladder.w / 2;
   if (!nearLadder(h, ladder, 18) && !h.onLadder) {
     // Walk toward ladder on current platform first
-    const speed = 110;
+    const speed = 110 * pace(h);
     const dx = ladderCx - h.w / 2 - h.x;
     h.vx = Math.abs(dx) > 2 ? Math.sign(dx) * speed : 0;
     h.facing = dx >= 0 ? 1 : -1;
@@ -438,7 +457,7 @@ function climbTowardGround(state: HelperState, h: Helper, dt: number) {
   h.onLadder = true;
   h.x = ladderCx - h.w / 2;
   h.vx = 0;
-  h.vy = 145;
+  h.vy = 145 * pace(h);
   applyHelperPhysics(state, h, dt);
   h.x = ladderCx - h.w / 2;
 
@@ -468,7 +487,7 @@ function idleNear(state: HelperState, h: Helper, x: number, dt: number) {
 /** Ground-only walk — never teleports, never engages ladders */
 function walkOnGround(state: HelperState, h: Helper, tx: number, dt: number) {
   h.onLadder = false;
-  const speed = h.carrying ? 88 : 115;
+  const speed = (h.carrying ? 88 : 115) * pace(h);
   const dx = tx - h.x;
   if (Math.abs(dx) > 2) {
     h.vx = Math.sign(dx) * speed;

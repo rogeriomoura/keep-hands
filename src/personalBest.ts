@@ -23,6 +23,16 @@ export type KeyValueStore = {
 };
 
 export const PERSONAL_BEST_KEY = "keep-hands:personal-best";
+/** Act 2 keeps its own best; Act 1 stays on the original key so existing bests carry over. */
+export const ACT2_BEST_KEY = "keep-hands:personal-best:act2";
+/** Set once Act 1 is won on this device (winning Act 1 before this flag existed also counts). */
+export const ACT2_UNLOCK_KEY = "keep-hands:act2-unlocked";
+
+export type Act = 1 | 2;
+
+const bestKey = (act: Act) => (act === 2 ? ACT2_BEST_KEY : PERSONAL_BEST_KEY);
+/** "night 3" for Act 1, "Act 2, night 3" for Act 2 */
+const nightLabel = (night: number, act: Act) => (act === 2 ? `Act 2, night ${night}` : `night ${night}`);
 
 export const EMPTY_BEST: PersonalBest = { bestMs: null, bestAt: null, furthestNight: 0 };
 
@@ -42,11 +52,11 @@ const isPositiveInt = (n: unknown): n is number =>
   typeof n === "number" && Number.isFinite(n) && n > 0;
 
 /** Read the stored best; anything missing or malformed falls back to "no best yet". */
-export function loadBest(store: KeyValueStore | null): PersonalBest {
+export function loadBest(store: KeyValueStore | null, act: Act = 1): PersonalBest {
   if (!store) return { ...EMPTY_BEST };
   let raw: string | null = null;
   try {
-    raw = store.getItem(PERSONAL_BEST_KEY);
+    raw = store.getItem(bestKey(act));
   } catch {
     return { ...EMPTY_BEST };
   }
@@ -65,10 +75,10 @@ export function loadBest(store: KeyValueStore | null): PersonalBest {
 }
 
 /** Persist the best; returns false if storage is unavailable (private mode, quota). */
-export function saveBest(store: KeyValueStore | null, best: PersonalBest): boolean {
+export function saveBest(store: KeyValueStore | null, best: PersonalBest, act: Act = 1): boolean {
   if (!store) return false;
   try {
-    store.setItem(PERSONAL_BEST_KEY, JSON.stringify(best));
+    store.setItem(bestKey(act), JSON.stringify(best));
     return true;
   } catch {
     return false;
@@ -135,18 +145,40 @@ export function winMessage(outcome: WinOutcome): { text: string; isNew: boolean 
 }
 
 /** One-line summary for the loss screen. */
-export function lossMessage(outcome: LossOutcome): { text: string; isNew: boolean } {
+export function lossMessage(outcome: LossOutcome, act: Act = 1): { text: string; isNew: boolean } {
   if (outcome.kind === "has-won") return { text: `Your best: ${fmt(outcome.bestMs)}`, isNew: false };
   return outcome.improved && outcome.night > 1
-    ? { text: `New furthest: you reached night ${outcome.night}!`, isNew: true }
-    : { text: `Best so far: reached night ${outcome.night}`, isNew: false };
+    ? { text: `New furthest: you reached ${nightLabel(outcome.night, act)}!`, isNew: true }
+    : { text: `Best so far: reached ${nightLabel(outcome.night, act)}`, isNew: false };
 }
 
-/** Title-screen line, or null for a brand-new player. */
-export function titleLine(best: PersonalBest): string | null {
-  if (best.bestMs !== null) return `Your best: ${fmt(best.bestMs)}`;
-  if (best.furthestNight > 0) return `Best: reached night ${best.furthestNight}`;
-  return null;
+/** Title-screen line, or null for a brand-new player. Act 2 is appended once played. */
+export function titleLine(best: PersonalBest, act2?: PersonalBest): string | null {
+  const parts: string[] = [];
+  if (best.bestMs !== null) parts.push(`Your best: ${fmt(best.bestMs)}`);
+  else if (best.furthestNight > 0) parts.push(`Best: reached night ${best.furthestNight}`);
+  if (act2?.bestMs != null) parts.push(`Act 2: ${fmt(act2.bestMs)}`);
+  else if (act2 && act2.furthestNight > 0) parts.push(`Act 2: reached night ${act2.furthestNight}`);
+  return parts.length ? parts.join(" · ") : null;
+}
+
+/** Has this device unlocked Act 2 (by winning Act 1, now or before the flag existed)? */
+export function isAct2Unlocked(store: KeyValueStore | null): boolean {
+  if (!store) return false;
+  try {
+    if (store.getItem(ACT2_UNLOCK_KEY) === "1") return true;
+  } catch {
+    return false;
+  }
+  return loadBest(store, 1).bestMs !== null;
+}
+
+export function unlockAct2(store: KeyValueStore | null): void {
+  try {
+    store?.setItem(ACT2_UNLOCK_KEY, "1");
+  } catch {
+    /* private mode: Act 2 is still reachable via "Continue" right after the win */
+  }
 }
 
 /** localStorage if usable; null when blocked (some private modes throw on access). */

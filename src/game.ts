@@ -3,7 +3,7 @@ import { MAX_FRAME_SECONDS } from "./game/constants";
 import { tryBuyUpgrade, tryHire } from "./game/shop";
 import { freshState } from "./game/state";
 import { canUserPause, stepFrame } from "./game/pause";
-import type { ViewInsets } from "./game/types";
+import type { ActId, ViewInsets } from "./game/types";
 import { confirmShopReady } from "./game/waves";
 import { createInput } from "./input";
 import { calmNewEffects } from "./motion";
@@ -104,16 +104,18 @@ export function createGame(canvas: HTMLCanvasElement) {
 
   return {
     getState: () => state,
-    start() {
-      state = freshState("playing");
+    /** Begin a new run of `act` (Act 2 is unlocked by winning Act 1). */
+    start(act: ActId = 1) {
+      state = freshState("playing", act);
       pausedForOrientation = false;
       pausedByUser = false;
       input.clearKeys();
       syncAudioPause();
       sfx.runStarted();
     },
+    /** Fresh run of the same act. */
     restart() {
-      state = freshState("playing");
+      state = freshState("playing", state.act);
       pausedForOrientation = false;
       pausedByUser = false;
       input.clearKeys();
@@ -164,6 +166,7 @@ export function createGame(canvas: HTMLCanvasElement) {
 export { formatRunTime } from "./game/format";
 export { isBruteSlot } from "./game/waves";
 export type {
+  ActId,
   CarryKind,
   ViewSize,
   Debris,

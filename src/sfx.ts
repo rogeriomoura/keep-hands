@@ -81,7 +81,7 @@ export const sfx = {
   cannonFired: (view: View, x: number) => at(view, "cannon", x, 0.8),
   ballImpact: (view: View, x: number) => at(view, "impact", x, 0.7),
   enemyKilled: (view: View, x: number) => at(view, "enemyDeath", x),
-  meleeHit: (view: View, kind: "raider" | "brute", x: number) =>
+  meleeHit: (view: View, kind: "raider" | "brute" | "bomber", x: number) =>
     at(view, kind === "brute" ? "maulHit" : "clubHit", x, kind === "brute" ? 1 : 0.8),
   /** tower bases are taller than wide; curtain walls are wider than tall */
   structureCollapsed: (view: View, body: { x: number; w: number; h: number }) =>

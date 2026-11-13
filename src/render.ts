@@ -1,7 +1,7 @@
 import type { GameState } from "./game/types";
 import { drawHelpers } from "./render/crew";
 import { drawCorpses, drawEnemies } from "./render/enemies";
-import { drawDebris, drawFloaters, drawProjectiles, drawPrompt } from "./render/fx";
+import { drawBombs, drawDebris, drawFloaters, drawProjectiles, drawPrompt } from "./render/fx";
 import { drawBanner, drawDayTimer } from "./render/hud";
 import { drawPlayer } from "./render/player";
 import { drawBackdrop, drawGround, drawSupplies, drawTowers, drawWalls } from "./render/scenery";
@@ -29,7 +29,7 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState) {
   ctx.scale(zoom, zoom);
   ctx.translate(-camera.x + shakeX, -camera.y + shakeY);
 
-  drawBackdrop(ctx, world.width, world.height, state.nightBlend);
+  drawBackdrop(ctx, world.width, world.height, state.nightBlend, state.act);
   drawGround(ctx, world);
   drawWalls(ctx, state);
   drawTowers(ctx, state);
@@ -38,6 +38,7 @@ export function render(ctx: CanvasRenderingContext2D, state: GameState) {
   drawEnemies(ctx, state);
   drawDebris(ctx, state);
   drawProjectiles(ctx, state);
+  drawBombs(ctx, state);
   drawHelpers(ctx, state);
   drawPlayer(ctx, state);
   drawFloaters(ctx, state);

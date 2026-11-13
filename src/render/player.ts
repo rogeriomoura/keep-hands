@@ -28,7 +28,9 @@ export function drawPlayer(ctx: CanvasRenderingContext2D, state: GameState) {
 
   const airborne = !p.onGround && !sideStep;
   const s = p.stride;
-  const sq = p.landSquash;
+  // knocked down by a bomb: stay crouched until it wears off
+  const stunned = p.stunTimer > 0;
+  const sq = stunned ? 1 : p.landSquash;
   let legFront: number;
   let legBack: number;
   let armFront: number;
@@ -98,6 +100,7 @@ export function drawPlayer(ctx: CanvasRenderingContext2D, state: GameState) {
 
   drawLimb(ctx, 4, 14 + bodyY, armFront, 11, 4, tunic, skin);
 
+  if (stunned) drawDazedStars(ctx, state.elapsed);
   ctx.restore();
 }
 
@@ -111,6 +114,17 @@ export type PlayerPalette = {
 };
 
 /** Back view on the ladder: hands and feet alternate on the rungs. */
+/** Three little stars circling the head while knocked down. */
+function drawDazedStars(ctx: CanvasRenderingContext2D, t: number) {
+  ctx.fillStyle = "#f0d080";
+  for (let i = 0; i < 3; i++) {
+    const a = t * 5 + (i * Math.PI * 2) / 3;
+    const x = Math.cos(a) * 10;
+    const y = 2 + Math.sin(a) * 3;
+    ctx.fillRect(x - 1.5, y - 1.5, 3, 3);
+  }
+}
+
 export function drawPlayerClimbing(
   ctx: CanvasRenderingContext2D,
   p: GameState["player"],

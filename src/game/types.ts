@@ -28,11 +28,13 @@ export type Player = {
   climbPhase: number;
   /** 0..1 squash after a hard landing */
   landSquash: number;
+  /** Seconds left knocked down by a bomb blast (no input while > 0) */
+  stunTimer: number;
 };
 
 export type Enemy = {
   id: number;
-  kind: "raider" | "brute";
+  kind: "raider" | "brute" | "bomber";
   x: number;
   y: number;
   w: number;
@@ -52,6 +54,15 @@ export type Enemy = {
   swingFrom: number;
   damage: number;
   walkPhase: number;
+  /** Bombers only: seconds until the next bomb may drop */
+  bombTimer: number;
+};
+
+/** A bomb dropped by a bomber: falls straight down, bursts on a structure or the ground */
+export type Bomb = {
+  x: number;
+  y: number;
+  vy: number;
 };
 
 export type Projectile = {
@@ -92,6 +103,8 @@ export type GameState = {
   player: Player;
   enemies: Enemy[];
   projectiles: Projectile[];
+  /** Act 2: bombs in flight */
+  bombs: Bomb[];
   floaters: Floater[];
   debris: Debris[];
   /** Cosmetic only: felled enemies playing their fall (never part of `enemies`) */
@@ -116,6 +129,8 @@ export type GameState = {
   gold: number;
   upgrades: Upgrades;
   crew: Crew;
+  /** Act 2: hired helpers promoted once (faster; runner loads more, mason repairs more) */
+  veterans: Crew;
   shopCooldown: number;
   shopKeysHeld: Partial<Record<UpgradeId | HireId, boolean>>;
   confirmHeld: boolean;
@@ -124,7 +139,11 @@ export type GameState = {
   elapsed: number;
   /** Seconds of actual play (prep + nights); frozen while the shop is open or the run is over */
   runTime: number;
+  /** Which act this run plays (separate layout, roster and leaderboard) */
+  act: ActId;
 };
+
+export type ActId = 1 | 2;
 
 export type ViewInsets = { left: number; right: number };
 

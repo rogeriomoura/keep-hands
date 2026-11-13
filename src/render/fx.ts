@@ -56,6 +56,25 @@ export function drawDebris(ctx: CanvasRenderingContext2D, state: GameState) {
   }
 }
 
+/** Act 2 bombs: a black ball with a fizzing fuse. */
+export function drawBombs(ctx: CanvasRenderingContext2D, state: GameState) {
+  for (const b of state.bombs) {
+    ctx.fillStyle = "#1a1a18";
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#4a4a44";
+    ctx.beginPath();
+    ctx.arc(b.x - 1.5, b.y - 1.5, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+    const flick = 0.6 + 0.4 * Math.sin(state.elapsed * 40 + b.x);
+    ctx.fillStyle = `rgba(255, 190, 90, ${flick})`;
+    ctx.beginPath();
+    ctx.arc(b.x + 2, b.y - 7, 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
 export function drawProjectiles(ctx: CanvasRenderingContext2D, state: GameState) {
   for (const p of state.projectiles) {
     ctx.fillStyle = "#2a2a28";

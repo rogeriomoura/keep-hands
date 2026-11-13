@@ -1,6 +1,6 @@
 /** Screen-space overlays: prep clock, shop, banner. */
 import type { GameState } from "../game/types";
-import { canHire, HIRE_DEFS, hireCost } from "../hires";
+import { canHire, canPromote, HIRE_DEFS, hireCost, PROMOTE_DEFS } from "../hires";
 import { overlayScale, roundRect } from "./shared";
 import { getShopLayout } from "../shopLayout";
 import { canBuy, UPGRADE_DEFS, upgradeCost } from "../upgrades";
@@ -53,7 +53,7 @@ export function drawShopPhase(
   ctx.fillStyle = "#a89880";
   ctx.font = "500 13px IBM Plex Sans, sans-serif";
   ctx.fillText(
-    `Paused · Night ${state.wave} waiting · Gold ${state.gold}`,
+    `Paused · ${state.act === 2 ? "Act 2, night" : "Night"} ${state.wave} waiting · Gold ${state.gold}`,
     cx,
     top + 64,
   );
@@ -86,11 +86,31 @@ export function drawShopPhase(
 
   ctx.fillStyle = "#cbb89a";
   ctx.font = "600 12px IBM Plex Sans, sans-serif";
-  ctx.fillText("HIRE HELP", cx, hireY);
+  ctx.fillText(state.act === 2 ? "HIRE & TRAIN CREW" : "HIRE HELP", cx, hireY);
 
   layout.hires.forEach((slot, i) => {
     const def = HIRE_DEFS[i]!;
     const owned = state.crew[def.id];
+    if (state.act === 2 && owned) {
+      // hired: the slot offers (or shows) the one-time promotion instead
+      const promo = PROMOTE_DEFS[def.id];
+      const done = state.veterans[def.id];
+      drawShopCard(
+        ctx,
+        slot.rect.x,
+        slot.rect.y,
+        slot.rect.w,
+        slot.rect.h,
+        def.key,
+        promo.name,
+        promo.blurb,
+        promo.detail,
+        done ? "Promoted ★" : `${promo.cost} gold`,
+        done,
+        canPromote(def.id, state.crew, state.veterans, state.gold),
+      );
+      return;
+    }
     const affordable = canHire(def.id, state.crew, state.gold);
     drawShopCard(
       ctx,
@@ -235,7 +255,11 @@ export function drawPrepPhase(
 
   ctx.fillStyle = "#cbb89a";
   ctx.font = "500 12px IBM Plex Sans, sans-serif";
-  ctx.fillText(`Night ${state.wave} begins when the clock hits zero`, cx, cy + 38);
+  ctx.fillText(
+    `${state.act === 2 ? "Act 2, night" : "Night"} ${state.wave} begins when the clock hits zero`,
+    cx,
+    cy + 38,
+  );
 
   const barW = 240;
   const barX = cx - barW / 2;

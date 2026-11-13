@@ -6,5 +6,8 @@ export default defineConfig({
   test: {
     include: ["tests/**/*.test.ts"],
     environment: "node",
+    // Vitest stubs CSS imports as empty strings by default; tests/css.test.ts
+    // imports the stylesheet as raw text to check it, so let this one through.
+    css: { include: [/src\/style\.css/] },
   },
 });

@@ -1,4 +1,34 @@
 /**
+ * A bomber's balloon bursts: a puff of fire and smoke up top, and the basket's
+ * wreckage tumbles to the ground as chips. (No body — it would topple in mid-air.)
+ */
+export function bomberDowned(state: GameState, e: Enemy) {
+  const cx = e.x + e.w / 2;
+  ballImpact(state, cx, e.y + 10, false);
+  for (let i = 0; i < 10; i++) {
+    const ang = -Math.PI * (0.15 + Math.random() * 0.7);
+    const spd = 40 + Math.random() * 90;
+    push(state, {
+      kind: "chip",
+      x: cx + (Math.random() - 0.5) * e.w,
+      y: e.y + e.h * (0.4 + Math.random() * 0.5),
+      vx: Math.cos(ang) * spd,
+      vy: Math.sin(ang) * spd,
+      life: 1.4 + Math.random() * 0.6,
+      size: 2 + Math.random() * 3,
+      spin: (Math.random() - 0.5) * 16,
+      color: ["#7a5a3a", "#5a4430", "#b8452a", "#c9b28a"][i % 4],
+    });
+  }
+}
+
+/** A bomb burst on a structure or the ground. (Sound comes from ballImpact.) */
+export function bombBurst(state: GameState, x: number, y: number) {
+  ballImpact(state, x, y, true);
+  state.shake = Math.max(state.shake, 3);
+}
+
+/**
  * Cosmetic-only effects: death falls, cannon smoke, explosions, collapses, dusk/dawn.
  * Nothing here is ever read by gameplay code — it only writes to state.debris /
  * state.corpses / state.nightBlend / state.shake (shake is already cosmetic).
@@ -104,6 +134,10 @@ export function ballImpact(state: GameState, x: number, y: number, onGround: boo
 /** A raider/brute was killed by a cannonball travelling with velocity vx. */
 export function enemyKilled(state: GameState, e: Enemy, hitVx: number) {
   sfx.enemyKilled(state, e.x + e.w / 2);
+  if (e.kind === "bomber") {
+    bomberDowned(state, e);
+    return;
+  }
   const dir: 1 | -1 = hitVx >= 0 ? 1 : -1;
   state.corpses.push({
     kind: e.kind,

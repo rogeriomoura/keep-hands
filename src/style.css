@@ -1050,6 +1050,8 @@ body.touch-play .pause-btn {
 .panel .pb-note.is-new {
   font-weight: 700;
   color: #e8c88c;
+}
+
 /* —— Settings (title screen) —— */
 .settings-row {
   margin: 0.25rem 0 0.9rem;
@@ -1095,4 +1097,47 @@ body.reduce-motion button:active {
 /* the rotate prompt still shows the phone turned sideways, just without animating */
 body.reduce-motion .rotate-icon .phone {
   transform: rotate(90deg);
+}
+
+/* —— Act 2: title button, Top 10 tabs, end-screen actions —— */
+.act2-btn {
+  color: #f0d080;
+  border-color: #b8452a;
+}
+
+.board-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 0.4rem;
+  margin: 0 0 0.6rem;
+}
+
+.board-tabs .board-tab {
+  padding: 0.3rem 0.9rem;
+  font-size: 0.85rem;
+  background: #211a14;
+  border: 1px solid #5a4a38;
+  color: #cbb89a;
+}
+
+.board-tabs .board-tab[aria-selected="true"] {
+  background: linear-gradient(180deg, #c47a3a, #8a4a22);
+  border-color: #8a6a40;
+  color: #fff6e8;
+}
+
+.end-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.continue-btn[hidden] {
+  display: none;
+}
+
+/* the HUD is display:flex, which would otherwise override its hidden attribute */
+.hud[hidden] {
+  display: none;
 }

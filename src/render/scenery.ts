@@ -10,6 +10,7 @@ export function drawBackdrop(
   w: number,
   h: number,
   night: number,
+  act: 1 | 2 = 1,
 ) {
   const n = night * night * (3 - 2 * night); // smoothstep
   const g = ctx.createLinearGradient(0, 0, 0, h);
@@ -29,8 +30,13 @@ export function drawBackdrop(
   if (n > 0) {
     ctx.fillStyle = `rgba(232, 220, 200, ${0.12 * n})`;
     ctx.beginPath();
-    ctx.arc(1180, 120 + (1 - n) * 90, 70, 0, Math.PI * 2);
+    ctx.arc(act === 2 ? 1500 : 1180, 120 + (1 - n) * 90, 70, 0, Math.PI * 2);
     ctx.fill();
+  }
+
+  if (act === 2) {
+    drawRidgeBackdrop(ctx, w);
+    return;
   }
 
   ctx.fillStyle = "rgba(20, 24, 20, 0.18)";
@@ -41,6 +47,30 @@ export function drawBackdrop(
     ctx.moveTo(x, 620);
     ctx.lineTo(x + 40, 620 - height);
     ctx.lineTo(x + 80, 620);
+    ctx.fill();
+  }
+}
+
+/** Act 2 skyline: a far mountain ridge and rolling foothills past the gate. */
+function drawRidgeBackdrop(ctx: CanvasRenderingContext2D, w: number) {
+  ctx.fillStyle = "rgba(30, 34, 40, 0.16)";
+  ctx.beginPath();
+  ctx.moveTo(-EDGE_BLEED, 620);
+  const peaks = [
+    [0, 470], [160, 420], [330, 455], [520, 380], [700, 440], [880, 400],
+    [1050, 450], [1240, 360], [1420, 430], [1600, 390], [w, 440],
+  ];
+  for (const [x, y] of peaks) ctx.lineTo(x, y);
+  ctx.lineTo(w + EDGE_BLEED, 620);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = "rgba(20, 28, 22, 0.2)";
+  for (let i = 0; i < 6; i++) {
+    const x = 1360 + i * 80;
+    const r = 60 + ((i * 29) % 40);
+    ctx.beginPath();
+    ctx.ellipse(x, 620, r, r * 0.55, 0, Math.PI, 0);
     ctx.fill();
   }
 }

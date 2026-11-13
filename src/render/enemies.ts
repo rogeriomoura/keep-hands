@@ -1,9 +1,13 @@
-/** Raiders, brutes and their falling bodies. */
+/** Raiders, brutes, bombers and their falling bodies. */
 import { enemyPose } from "../enemyPose";
-import type { GameState } from "../game/types";
+import type { Enemy, GameState } from "../game/types";
 
 export function drawEnemies(ctx: CanvasRenderingContext2D, state: GameState) {
   for (const e of state.enemies) {
+    if (e.kind === "bomber") {
+      drawBomber(ctx, e);
+      continue;
+    }
     const brute = e.kind === "brute";
     const body = brute ? "#5a2a28" : "#3a4a38";
     const shade = brute ? "#3a1814" : "#243028";
@@ -92,6 +96,59 @@ export function drawEnemies(ctx: CanvasRenderingContext2D, state: GameState) {
     ctx.fillStyle = "#c45c2a";
     ctx.fillRect(e.x + 4, e.y - 8, (e.w - 8) * (e.hp / e.maxHp), 4);
   }
+}
+
+/**
+ * Act 2 bomber: a patched balloon with a raider in the basket and a bomb slung
+ * below. The bob is drawn only — the hitbox (e.x, e.y, e.w, e.h) doesn't move.
+ */
+function drawBomber(ctx: CanvasRenderingContext2D, e: Enemy) {
+  const bob = Math.sin(e.walkPhase) * 2;
+  const cx = e.x + e.w / 2;
+  const top = e.y + bob;
+
+  // ropes from the envelope to the basket
+  ctx.strokeStyle = "#4a3a28";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(cx - 10, top + 22);
+  ctx.lineTo(cx - 6, top + 31);
+  ctx.moveTo(cx + 10, top + 22);
+  ctx.lineTo(cx + 6, top + 31);
+  ctx.stroke();
+
+  // envelope: dark patched cloth with red stripes
+  ctx.fillStyle = "#6a2e24";
+  ctx.beginPath();
+  ctx.ellipse(cx, top + 12, 15, 14, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#b8452a";
+  ctx.fillRect(cx - 3, top - 1, 6, 26);
+  ctx.fillStyle = "#4a2018";
+  ctx.fillRect(cx - 12, top + 9, 5, 5);
+  ctx.fillStyle = "rgba(255, 220, 180, 0.18)";
+  ctx.beginPath();
+  ctx.ellipse(cx - 6, top + 6, 4, 6, -0.4, 0, Math.PI * 2);
+  ctx.fill();
+
+  // raider peeking over the basket, facing the keep (left)
+  ctx.fillStyle = "#6a7a68";
+  ctx.fillRect(cx - 4, top + 26, 8, 7);
+  ctx.fillStyle = "#1a1612";
+  ctx.fillRect(cx - 3, top + 28, 2, 2);
+  // basket
+  ctx.fillStyle = "#6a5440";
+  ctx.fillRect(cx - 8, top + 31, 16, 9);
+  ctx.fillStyle = "#4a3a28";
+  ctx.fillRect(cx - 8, top + 34, 16, 2);
+  // the next bomb, slung under the basket
+  ctx.fillStyle = "#1a1a18";
+  ctx.beginPath();
+  ctx.arc(cx, top + 43, 3, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#c45c2a";
+  ctx.fillRect(e.x + 4, top - 8, (e.w - 8) * (e.hp / e.maxHp), 4);
 }
 
 /** Felled raiders topple backwards around a heel, slide a little, and fade out. */

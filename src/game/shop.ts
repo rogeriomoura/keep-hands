@@ -1,8 +1,8 @@
 /** Quartermaster: buying upgrades and hiring crew. */
 import { addFloater } from "./particles";
 import type { GameState } from "./types";
-import { spawnHelper } from "../helpers";
-import { canHire, HIRE_DEFS, hireCost, type HireId } from "../hires";
+import { promoteHelper, spawnHelper } from "../helpers";
+import { canHire, canPromote, HIRE_DEFS, hireCost, PROMOTE_DEFS, type HireId } from "../hires";
 import type { KeyState } from "../input";
 import { sfx } from "../sfx";
 import { canBuy, UPGRADE_DEFS, upgradeCost, type UpgradeId } from "../upgrades";
@@ -41,6 +41,11 @@ export function updateShop(state: GameState, keys: KeyState) {
 }
 
 export function tryHire(state: GameState, id: HireId) {
+  // Act 2: a hired helper's card becomes their one-time promotion
+  if (state.act === 2 && state.crew[id]) {
+    tryPromote(state, id);
+    return;
+  }
   if (!canHire(id, state.crew, state.gold)) {
     state.shopCooldown = 0.2;
     sfx.denied();
@@ -63,6 +68,26 @@ export function tryHire(state: GameState, id: HireId) {
     def.name,
     "#8fbc8f",
   );
+}
+
+/** Act 2: promote a hired helper once (faster; runner loads 5, mason repairs more). */
+export function tryPromote(state: GameState, id: HireId) {
+  if (state.act !== 2 || !canPromote(id, state.crew, state.veterans, state.gold)) {
+    state.shopCooldown = 0.2;
+    sfx.denied();
+    return;
+  }
+  sfx.purchase();
+
+  const def = PROMOTE_DEFS[id];
+  state.gold -= def.cost;
+  state.veterans[id] = true;
+  state.shopCooldown = 0.35;
+  for (const h of state.helpers) if (h.role === id) promoteHelper(h);
+
+  state.banner = `Promoted: ${def.name}`;
+  state.bannerLife = 1.6;
+  addFloater(state, state.player.x + state.player.w / 2, state.player.y - 20, def.name, "#d8b45a");
 }
 
 export function tryBuyUpgrade(state: GameState, id: UpgradeId) {

@@ -3,7 +3,9 @@ import { registerServiceWorker } from "./sw/register";
 import { createGame, formatRunTime } from "./game";
 import {
   browserStore,
+  isAct2Unlocked,
   loadBest,
+  unlockAct2,
   lossMessage,
   recordLoss,
   recordWin,
@@ -20,6 +22,7 @@ import {
   leaderboardEnabled,
   startRun,
   submitScore,
+  type Act,
   type ScoreEntry,
 } from "./leaderboard";
 import {
@@ -49,7 +52,7 @@ app.innerHTML = `
     </div>
     <div class="hud" id="hud" hidden>
       <div>Phase <strong id="phase">Shop</strong></div>
-      <div>Night <strong id="wave">1</strong>/5</div>
+      <div><span id="night-label">Night</span> <strong id="wave">1</strong>/5</div>
       <div>Time <strong id="run-time" class="run-time">0:00.0</strong></div>
       <div>Lives <strong id="lives">3</strong></div>
       <div>Gold <strong id="gold">0</strong></div>
@@ -127,6 +130,7 @@ app.innerHTML = `
 
         <div class="title-actions">
           <button type="button" id="start" class="start-btn">Start game</button>
+          <button type="button" id="act2-btn" class="board-btn act2-btn" hidden>Act 2</button>
           <button type="button" id="board-btn" class="board-btn" hidden>Top 10</button>
         </div>
       </div>
@@ -136,6 +140,10 @@ app.innerHTML = `
       <div class="panel" role="dialog" aria-modal="true" aria-labelledby="board-modal-title">
         <h2 id="board-modal-title">Fastest keepers</h2>
         <p class="board-modal-sub">Quickest wins of all 5 nights (shop time not counted)</p>
+        <div class="board-tabs" role="tablist" aria-label="Leaderboard act">
+          <button type="button" role="tab" id="tab-act1" class="board-tab" aria-selected="true">Act 1</button>
+          <button type="button" role="tab" id="tab-act2" class="board-tab" aria-selected="false">Act 2</button>
+        </div>
         <div class="board">
           <ol class="board-list" id="board-modal-list"></ol>
         </div>
@@ -161,10 +169,13 @@ app.innerHTML = `
         </form>
         <p class="submit-status" id="submit-status" role="status"></p>
         <div class="board" id="end-board" hidden>
-          <h3>Fastest keepers</h3>
+          <h3 id="end-board-title">Fastest keepers</h3>
           <ol class="board-list" id="end-board-list"></ol>
         </div>
-        <button type="button" id="restart">Try again</button>
+        <div class="end-actions">
+          <button type="button" id="continue-btn" class="continue-btn" hidden>Continue to Act 2</button>
+          <button type="button" id="restart">Try again</button>
+        </div>
       </div>
     </div>
 
@@ -254,6 +265,12 @@ const submitBtn = document.querySelector<HTMLButtonElement>("#submit-btn")!;
 const submitStatus = document.querySelector<HTMLParagraphElement>("#submit-status")!;
 const endBoard = document.querySelector<HTMLDivElement>("#end-board")!;
 const endBoardList = document.querySelector<HTMLOListElement>("#end-board-list")!;
+const endBoardTitle = document.querySelector<HTMLElement>("#end-board-title")!;
+const continueBtn = document.querySelector<HTMLButtonElement>("#continue-btn")!;
+const act2Btn = document.querySelector<HTMLButtonElement>("#act2-btn")!;
+const nightLabelEl = document.querySelector<HTMLElement>("#night-label")!;
+/** "Continue to Act 2" was pressed once while the Act 1 time was still unposted */
+let continueArmed = false;
 
 // —— Leaderboard ——
 const INITIALS_KEY = "keep-hands:initials";
@@ -303,13 +320,23 @@ const boardModalList = document.querySelector<HTMLOListElement>("#board-modal-li
 const boardModalStatus = document.querySelector<HTMLParagraphElement>("#board-modal-status")!;
 const boardModalClose = document.querySelector<HTMLButtonElement>("#board-modal-close")!;
 
-async function openBoardModal() {
+const boardTabs: Record<Act, HTMLButtonElement> = {
+  1: document.querySelector<HTMLButtonElement>("#tab-act1")!,
+  2: document.querySelector<HTMLButtonElement>("#tab-act2")!,
+};
+let boardAct: Act = 1;
+
+async function openBoardModal(act: Act = boardAct) {
+  boardAct = act;
+  for (const a of [1, 2] as const) boardTabs[a].setAttribute("aria-selected", String(a === act));
+  const wasHidden = boardModal.hidden;
   boardModal.hidden = false;
   boardModalList.replaceChildren();
   boardModalStatus.textContent = "Loading…";
-  boardModalClose.focus();
-  const top = await fetchTop(10);
-  if (boardModal.hidden) return;
+  if (wasHidden) boardModalClose.focus();
+  const top = await fetchTop(10, act);
+  // closed, or switched to the other tab while this was loading
+  if (boardModal.hidden || boardAct !== act) return;
   if (top) {
     renderBoard(boardModalList, top);
     boardModalStatus.textContent = "";
@@ -324,7 +351,9 @@ function closeBoardModal() {
   boardBtn.focus();
 }
 
-boardBtn.addEventListener("click", openBoardModal);
+boardBtn.addEventListener("click", () => openBoardModal());
+boardTabs[1].addEventListener("click", () => openBoardModal(1));
+boardTabs[2].addEventListener("click", () => openBoardModal(2));
 boardModalClose.addEventListener("click", closeBoardModal);
 // click/tap outside the panel closes it
 boardModal.addEventListener("click", (e) => {
@@ -334,16 +363,19 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "Escape") closeBoardModal();
 });
 
-async function showEndBoard() {
+async function showEndBoard(act: Act) {
   endBoard.hidden = true;
   if (!leaderboardEnabled) return;
-  const top = await fetchTop(10);
+  endBoardTitle.textContent = act === 2 ? "Fastest keepers · Act 2" : "Fastest keepers · Act 1";
+  const top = await fetchTop(10, act);
   if (!top) return;
   renderBoard(endBoardList, top);
   endBoard.hidden = false;
 }
 
 function resetEndScreen() {
+  continueBtn.hidden = true;
+  continueArmed = false;
   endBestEl.hidden = true;
   submitForm.hidden = true;
   submitStatus.textContent = "";
@@ -402,7 +434,8 @@ loadTitleBoard();
 
 // —— Personal best (this browser only; works without the leaderboard API) ——
 function showTitleBest() {
-  const line = titleLine(loadBest(browserStore()));
+  const store = browserStore();
+  const line = titleLine(loadBest(store, 1), loadBest(store, 2));
   titleBestEl.textContent = line ?? "";
   titleBestEl.hidden = !line;
 }
@@ -561,9 +594,12 @@ function syncTouchUi() {
   }
 }
 
+/** Which act the next "start" launches (title buttons / Continue set it) */
+let pendingAct: Act = 1;
+
 function launchRun() {
-  game.start();
-  runToken = startRun();
+  game.start(pendingAct);
+  runToken = startRun(pendingAct);
   resetEndScreen();
   title.hidden = true;
   overlay.hidden = true;
@@ -574,7 +610,7 @@ function launchRun() {
 
 function launchRestart() {
   game.restart();
-  runToken = startRun();
+  runToken = startRun(game.getState().act);
   resetEndScreen();
   overlay.hidden = true;
   title.hidden = true;
@@ -583,7 +619,8 @@ function launchRestart() {
   syncTouchUi();
 }
 
-startBtn.addEventListener("click", async () => {
+async function requestStart(act: Act) {
+  pendingAct = act;
   // Phones/tablets go immersive on start; desktop browsers stay windowed (use the FS button)
   if (touchPlay) await enterImmersive(document.documentElement);
   if (syncRotateGate()) {
@@ -591,6 +628,27 @@ startBtn.addEventListener("click", async () => {
     return;
   }
   launchRun();
+}
+
+startBtn.addEventListener("click", () => requestStart(1));
+act2Btn.addEventListener("click", () => requestStart(2));
+
+/** Title buttons: "Act 2" appears once Act 2 is unlocked on this device. */
+function syncActButtons() {
+  const unlocked = isAct2Unlocked(browserStore());
+  act2Btn.hidden = !unlocked;
+  startBtn.textContent = unlocked ? "Act 1" : "Start game";
+}
+syncActButtons();
+
+continueBtn.addEventListener("click", () => {
+  // don't silently drop an Act 1 time that could still be posted
+  if (leaderboardEnabled && !submitForm.hidden && !continueArmed) {
+    continueArmed = true;
+    submitStatus.textContent = "Your Act 1 time isn't posted yet. Post it, or press Continue again to skip.";
+    return;
+  }
+  requestStart(2);
 });
 
 async function requestRestart() {
@@ -704,7 +762,7 @@ function syncHud() {
   const blocked = syncRotateGate();
 
   if (!blocked) {
-    if (pendingStart && game.getState().status === "menu") launchRun();
+    if (pendingStart) launchRun();
     if (pendingRestart) launchRestart();
   }
 
@@ -725,6 +783,7 @@ function syncHud() {
     phaseEl.textContent =
       s.dayPhase === "shop" ? "Shop" : s.dayPhase === "prep" ? "Prep" : "Night";
     waveEl.textContent = String(Math.min(s.wave, 5));
+    nightLabelEl.textContent = s.act === 2 ? "Act 2 · Night" : "Night";
     runTimeEl.textContent = formatRunTime(s.runTime);
     // dim the clock while it's stopped (shop open)
     runTimeEl.classList.toggle("is-paused", s.status === "playing" && s.dayPhase === "shop");
@@ -732,8 +791,8 @@ function syncHud() {
     goldEl.textContent = String(s.gold);
     carryEl.textContent = s.player.carrying ?? "—";
     const crewBits = [
-      s.crew.runner ? "Runner" : null,
-      s.crew.mason ? "Mason" : null,
+      s.crew.runner ? (s.veterans.runner ? "Runner ★" : "Runner") : null,
+      s.crew.mason ? (s.veterans.mason ? "Mason ★" : "Mason") : null,
     ].filter(Boolean);
     crewEl.textContent = crewBits.length ? crewBits.join(" · ") : "—";
     hud.hidden = false;
@@ -744,33 +803,47 @@ function syncHud() {
     overlay.hidden = false;
     title.hidden = true;
     touchUi.hidden = true;
+    const act = s.act;
+    const store = browserStore();
     if (s.status === "won") {
-      endTitle.textContent = "Night held";
-      endBody.textContent =
-        "The keep still stands. Towers fed, walls patched — good work.";
-      endTimeEl.textContent = `All 5 nights in ${formatRunTime(s.runTime)}`;
+      if (act === 2) {
+        endTitle.textContent = "The ridge held";
+        endBody.textContent = "Act 2 complete. The bombers broke on your guns and the walls still stand.";
+        endTimeEl.textContent = `All of Act 2 in ${formatRunTime(s.runTime)}`;
+      } else {
+        endTitle.textContent = "Night held";
+        endBody.textContent =
+          "The keep still stands. Towers fed, walls patched — good work.";
+        endTimeEl.textContent = `All 5 nights in ${formatRunTime(s.runTime)}`;
+        // winning Act 1 unlocks Act 2 on this device, and you can carry straight on
+        unlockAct2(store);
+        syncActButtons();
+        continueBtn.hidden = false;
+      }
       // record right away — independent of the leaderboard post or the API being up
-      const store = browserStore();
-      const win = recordWin(loadBest(store), Math.round(s.runTime * 1000), Date.now());
-      saveBest(store, win.next);
+      const win = recordWin(loadBest(store, act), Math.round(s.runTime * 1000), Date.now());
+      saveBest(store, win.next, act);
       showEndBest(winMessage(win.outcome));
       showTitleBest();
       if (leaderboardEnabled) {
         submitForm.hidden = false;
         initialsInput.value = savedInitials();
       }
-      showEndBoard();
+      showEndBoard(act);
     } else {
       endTitle.textContent = "Keep fallen";
       endBody.textContent =
         "Something went unrepaired. The next shift will remember.";
-      endTimeEl.textContent = `Fell on night ${Math.min(s.wave, 5)} after ${formatRunTime(s.runTime)}`;
-      const store = browserStore();
-      const loss = recordLoss(loadBest(store), Math.min(s.wave, 5));
-      saveBest(store, loss.next);
-      showEndBest(lossMessage(loss.outcome));
+      const night = Math.min(s.wave, 5);
+      endTimeEl.textContent =
+        act === 2
+          ? `Fell on Act 2, night ${night} after ${formatRunTime(s.runTime)}`
+          : `Fell on night ${night} after ${formatRunTime(s.runTime)}`;
+      const loss = recordLoss(loadBest(store, act), night);
+      saveBest(store, loss.next, act);
+      showEndBest(lossMessage(loss.outcome, act));
       showTitleBest();
-      showEndBoard();
+      showEndBoard(act);
     }
   }
 

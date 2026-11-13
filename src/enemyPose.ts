@@ -9,7 +9,7 @@ export type AttackPhase = "none" | "windup" | "strike" | "recover";
 export type SwingTiming = { windup: number; strike: number; recover: number };
 
 type PoseSource = {
-  kind: "raider" | "brute";
+  kind: "raider" | "brute" | "bomber";
   attackPhase: AttackPhase;
   phaseT: number;
   swingScale: number;
@@ -45,7 +45,7 @@ export const ARM_FOLLOW = 1.15;
 const ARM_FOLLOW_OVERHEAD = ARM_FOLLOW - Math.PI * 2;
 
 /** Total ≈ 1s so damage-per-second matches the old timing. */
-export function swingTiming(kind: "raider" | "brute", scale = 1): SwingTiming {
+export function swingTiming(kind: "raider" | "brute" | "bomber", scale = 1): SwingTiming {
   const t =
     kind === "brute"
       ? { windup: 0.62, strike: 0.12, recover: 0.26 }

@@ -1,5 +1,6 @@
 /** Day/night cycle, the fixed wave roster and enemy spawning. */
 import { ARM_READY } from "../enemyPose";
+import { ACTS, BOMB_FIRST_DELAY, BOMBER_ALTITUDE, enemyStats, nightSize, slotKind, spawnInterval } from "./acts";
 import { MAX_WAVES, PREP_SECONDS } from "./constants";
 import type { GameState } from "./types";
 import type { KeyState } from "../input";
@@ -38,7 +39,7 @@ export function updateWaves(state: GameState, dt: number, keys: KeyState) {
     if (state.spawnTimer <= 0) {
       spawnEnemy(state);
       state.spawnedThisWave += 1;
-      state.spawnTimer = Math.max(0.45, 1.05 - state.wave * 0.08);
+      state.spawnTimer = spawnInterval(state.act, state.wave);
     }
   } else if (state.enemies.length === 0) {
     state.wave += 1;
@@ -57,9 +58,9 @@ export function beginNight(state: GameState) {
   state.betweenWaves = false;
   state.dayPhase = null;
   state.spawnedThisWave = 0;
-  state.toSpawn = 4 + state.wave * 2;
+  state.toSpawn = nightSize(state.act, state.wave);
   state.spawnTimer = 0.35;
-  state.banner = `Night ${state.wave} — hold the walls`;
+  state.banner = ACTS[state.act].nightBanner(state.wave);
   state.bannerLife = 2.2;
   sfx.nightStarted();
 }
@@ -86,40 +87,33 @@ export function confirmShopReady(state: GameState) {
   state.player.jumpLocked = true;
 }
 
-/** Share of each night's raiders that are brutes (from night 3 on). */
-export const BRUTE_SHARE = 0.28;
-
-/**
- * Fixed wave roster so every run faces the same nights (fair leaderboard).
- * Brutes are spread evenly through the night — same count and order every run:
- * night 3: 3 of 10, night 4: 3 of 12, night 5: 4 of 14 (≈ the old 28% average).
- */
-export function isBruteSlot(wave: number, index: number, total: number): boolean {
-  if (wave < 3 || total <= 0) return false;
-  const brutes = Math.round(total * BRUTE_SHARE);
-  return Math.floor(((index + 1) * brutes) / total) > Math.floor((index * brutes) / total);
-}
+// The fixed rosters live in acts.ts; re-exported for existing importers.
+export { BRUTE_SHARE, isBruteSlot } from "./acts";
 
 export function spawnEnemy(state: GameState) {
-  const brute = isBruteSlot(state.wave, state.spawnedThisWave, state.toSpawn);
-  const h = brute ? 46 : 34;
+  const kind = slotKind(state.act, state.wave, state.spawnedThisWave, state.toSpawn);
+  const stats = enemyStats(state.act, state.wave, kind);
+  const bomber = kind === "bomber";
   state.enemies.push({
     id: nextEnemyId++,
-    kind: brute ? "brute" : "raider",
-    x: state.world.width - 40,
-    y: state.world.groundY - h,
-    w: brute ? 28 : 22,
-    h,
-    hp: brute ? 78 : 28 + state.wave * 2,
-    maxHp: brute ? 78 : 28 + state.wave * 2,
-    speed: brute ? 40 : 68 + state.wave * 5,
+    kind,
+    // bombers enter from just past the right edge so they drift into view
+    x: bomber ? state.world.width + 10 : state.world.width - 40,
+    y: bomber ? state.world.groundY - BOMBER_ALTITUDE : state.world.groundY - stats.h,
+    w: stats.w,
+    h: stats.h,
+    hp: stats.hp,
+    maxHp: stats.hp,
+    speed: stats.speed,
     attacking: false,
     attackPhase: "none",
     phaseT: 0,
     swingScale: 1,
     swingFrom: ARM_READY,
     swingCount: 0,
-    damage: brute ? 14 : 8,
+    damage: stats.damage,
+    // cosmetic only (march sway / balloon bob)
     walkPhase: Math.random() * Math.PI * 2,
+    bombTimer: BOMB_FIRST_DELAY,
   });
 }

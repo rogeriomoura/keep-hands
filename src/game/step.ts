@@ -6,6 +6,7 @@ import { capDebris, updateCorpses, updateSky } from "../effects";
 import { updateHelpers } from "../helpers";
 import type { KeyState } from "../input";
 import { sfx } from "../sfx";
+import { updateBombs } from "./bombers";
 import { updateCamera } from "./camera";
 import { MAX_STEP_SECONDS, MAX_WAVES } from "./constants";
 import { updateEnemies } from "./enemies";
@@ -16,6 +17,9 @@ import { updateShop } from "./shop";
 import { updateProjectiles, updateTowers } from "./towers";
 import type { GameState, ViewInsets, ViewSize } from "./types";
 import { updateWaves } from "./waves";
+
+/** Input while the player is knocked down (never mutated) */
+const NO_KEYS: KeyState = Object.freeze({}) as KeyState;
 
 /**
  * Simulate one rendered frame. Slow devices run the same game speed as fast ones:
@@ -57,12 +61,17 @@ export function update(
   if (state.dayPhase !== "shop") {
     // run clock only advances while the world does (never during the shop)
     state.runTime += dt;
-    updatePlayer(state, keys, dt);
+    // knocked down by a bomb: no movement or actions until it wears off
+    const p = state.player;
+    const playerKeys = p.stunTimer > 0 ? NO_KEYS : keys;
+    p.stunTimer = Math.max(0, p.stunTimer - dt);
+    updatePlayer(state, playerKeys, dt);
     updateHelpers(state, dt);
     updateTowers(state, dt);
     updateProjectiles(state, dt);
     updateEnemies(state, dt);
-    updatePrompt(state, keys);
+    updateBombs(state, dt);
+    updatePrompt(state, playerKeys);
   } else {
     state.prompt = "";
   }
@@ -87,7 +96,7 @@ export function update(
   ) {
     state.status = "won";
     sfx.runEnded(true);
-    state.banner = "Night held";
+    state.banner = state.act === 2 ? "The ridge held" : "Night held";
     state.bannerLife = 3;
   }
 }

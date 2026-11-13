@@ -50,7 +50,12 @@ export type World = {
   gateX: number;
 };
 
-export function createWorld(): World {
+/** Act 1: the valley keep. Act 2: the ridge keep (wider, three towers, three walls). */
+export function createWorld(act: 1 | 2 = 1): World {
+  return act === 2 ? createRidgeWorld() : createValleyWorld();
+}
+
+function createValleyWorld(): World {
   const width = 1600;
   const height = 720;
   const groundY = 620;
@@ -119,6 +124,44 @@ export function createWorld(): World {
     supplies,
     gateX: 780,
   };
+}
+
+/**
+ * Act 2. Same ground line and height as Act 1 (phone zoom and camera framing are
+ * tuned to them) and the same supply spots; everything east of them is new.
+ * Bombers cross at altitude, so three cannons share the sky between them.
+ */
+function createRidgeWorld(): World {
+  const width = 1800;
+  const height = 720;
+  const groundY = 620;
+
+  const platforms: Platform[] = [
+    { kind: "ground", x: 0, y: groundY, w: width, h: height - groundY },
+  ];
+
+  const towers: Tower[] = [
+    makeTower("west", 230, groundY, 170),
+    makeTower("mid", 650, groundY, 240),
+    makeTower("east", 1070, groundY, 200),
+  ];
+  for (const t of towers) platforms.push({ kind: "floor", ...t.platform });
+
+  const walls: WallSegment[] = [
+    { id: "curtain-1", body: { x: 360, y: groundY - 100, w: 180, h: 100 }, hp: 90, maxHp: 90 },
+    { id: "curtain-2", body: { x: 780, y: groundY - 115, w: 150, h: 115 }, hp: 100, maxHp: 100 },
+    { id: "curtain-3", body: { x: 1200, y: groundY - 95, w: 140, h: 95 }, hp: 90, maxHp: 90 },
+  ];
+  for (const w of walls) {
+    platforms.push({ kind: "wallTop", x: w.body.x, y: w.body.y, w: w.body.w, h: 12 });
+  }
+
+  const supplies: Supply[] = [
+    { id: "ammo-crate", kind: "ammo", body: { x: 90, y: groundY - 36, w: 44, h: 36 }, amount: 99 },
+    { id: "stone-pile", kind: "stone", body: { x: 150, y: groundY - 28, w: 52, h: 28 }, amount: 99 },
+  ];
+
+  return { width, height, groundY, platforms, towers, walls, supplies, gateX: 1340 };
 }
 
 function makeTower(id: string, x: number, groundY: number, topHeight: number): Tower {

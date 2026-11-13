@@ -1,6 +1,7 @@
 /** Raider movement, the melee swing state machine and structure damage. */
 import { structureCollapsed } from "../effects";
 import { ARM_READY, marchArm, swingTiming } from "../enemyPose";
+import { updateBomber } from "./bombers";
 import { addFloater } from "./particles";
 import type { Enemy, GameState } from "./types";
 import { sfx } from "../sfx";
@@ -9,6 +10,11 @@ export function updateEnemies(state: GameState, dt: number) {
   const gate = state.world.gateX;
 
   for (const e of state.enemies) {
+    // bombers fly over everything: no walking, no melee, no breach
+    if (e.kind === "bomber") {
+      updateBomber(state, e, dt);
+      continue;
+    }
     const target = easternStructure(state);
 
     if (!target) {

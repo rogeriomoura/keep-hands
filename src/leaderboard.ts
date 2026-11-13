@@ -32,9 +32,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<{ status: n
   }
 }
 
-/** Ask the server to stamp the start of a run; the token proves when it began. */
-export async function startRun(): Promise<string | null> {
-  const res = await request<{ token?: string }>("/runs", { method: "POST" });
+export type Act = 1 | 2;
+
+/**
+ * Ask the server to stamp the start of a run; the token proves when it began and
+ * which act it is (the act is signed in, so a time can only land on its own board).
+ */
+export async function startRun(act: Act = 1): Promise<string | null> {
+  const res = await request<{ token?: string }>("/runs", {
+    method: "POST",
+    body: JSON.stringify({ act }),
+  });
   return res?.status === 200 && res.body.token ? res.body.token : null;
 }
 
@@ -55,8 +63,8 @@ export async function submitScore(
   return { ok: false, error: res.body.error ?? "server_error" };
 }
 
-export async function fetchTop(limit = 10): Promise<ScoreEntry[] | null> {
-  const res = await request<{ top?: ScoreEntry[] }>(`/scores?limit=${limit}`);
+export async function fetchTop(limit = 10, act: Act = 1): Promise<ScoreEntry[] | null> {
+  const res = await request<{ top?: ScoreEntry[] }>(`/scores?act=${act}&limit=${limit}`);
   return res?.status === 200 && res.body.top ? res.body.top : null;
 }
 
